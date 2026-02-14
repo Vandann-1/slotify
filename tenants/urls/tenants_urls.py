@@ -5,5 +5,10 @@ from tenants.views.tenants_views import *
 
 urlpatterns = [
    path("create/", CreateWorkspaceView.as_view()),
-    path("list/", ListWorkspaceView.as_view()),
+   path("list/", ListWorkspaceView.as_view()),
+   path("<slug:slug>/", WorkspaceDetailView.as_view()),
+   path("<slug:slug>/update/", UpdateWorkspaceView.as_view()),
+   path("<slug:slug>/delete/", DeleteWorkspaceView.as_view()),
+    
+    
 ]
