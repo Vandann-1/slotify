@@ -1,5 +1,6 @@
 from django.db import models
 from tenants.choices import TenantType
+from django.contrib.auth import get_user_model
 
 
 class Tenant(models.Model):

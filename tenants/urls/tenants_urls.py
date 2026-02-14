@@ -8,7 +8,7 @@ urlpatterns = [
    path("list/", ListWorkspaceView.as_view()),
    path("<slug:slug>/", WorkspaceDetailView.as_view()),
    path("<slug:slug>/update/", UpdateWorkspaceView.as_view()),
-   path("<slug:slug>/delete/", DeleteWorkspaceView.as_view()),
+   # path("<slug:slug>/delete/", DeleteWorkspaceView.as_view()),
     
     
 ]
