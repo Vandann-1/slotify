@@ -18,11 +18,9 @@ from django.contrib import admin
 from django.urls import path , include
 from django.shortcuts import redirect
 
-def landing_page(request):
-    return redirect('http://localhost:3000/')
+
 
 urlpatterns = [
-    path('', landing_page),
     # path('api/', include('api.urls')),
     path('admin/', admin.site.urls),
     path('api/workspaces/', include('tenants.urls.tenants_urls')),

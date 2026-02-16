@@ -3,36 +3,33 @@ from django.contrib.auth import authenticate
 from .models import User
 
 
+from rest_framework import serializers
+# from .models import User
+
+
 class RegisterSerializer(serializers.ModelSerializer):
 
-    password = serializers.CharField(
-        write_only=True,
-        min_length=5,
-        required=True
+    password = serializers.CharField(write_only=True)
+
+    role = serializers.ChoiceField(
+        choices=[("admin", "Admin"), ("client", "Client")],
+        default="admin"
     )
 
     class Meta:
-
         model = User
-
         fields = [
-            "id",
             "full_name",
             "username",
             "email",
             "password",
+            "role"
         ]
 
-        read_only_fields = ["id"]
 
-    def validate_email(self, value):
-
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                "Email already exists"
-            )
-
-        return value
+    # ============================
+    # VALIDATE USERNAME
+    # ============================
 
     def validate_username(self, value):
 
@@ -43,22 +40,55 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         return value
 
+
+    # ============================
+    # VALIDATE EMAIL
+    # ============================
+
+    def validate_email(self, value):
+
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError(
+                "Email already exists"
+            )
+
+        return value
+
+
+    # ============================
+    # CREATE USER (FIXED)
+    # ============================
+
     def create(self, validated_data):
 
+        password = validated_data.pop("password")
+
+        role = validated_data.pop("role", "client")
+
         user = User.objects.create_user(
+
             username=validated_data["username"],
+
             email=validated_data["email"],
-            password=validated_data["password"],
-            full_name=validated_data.get("full_name", "")
+
+            full_name=validated_data["full_name"],
+
+            password=password,
+
+            role=role
+
         )
 
         return user
 
 
+# from django.contrib.auth import authenticate
+# from rest_framework import serializers
+
 class LoginSerializer(serializers.Serializer):
 
     username = serializers.CharField()
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField()
 
     def validate(self, data):
 
@@ -69,15 +99,8 @@ class LoginSerializer(serializers.Serializer):
 
         if not user:
             raise serializers.ValidationError(
-                "Invalid username or password"
+                {"non_field_errors": ["Invalid username or password"]}
             )
 
         data["user"] = user
-
         return data
-
-class LogoutSerializer(serializers.Serializer):
-
-    def validate(self, data):
-        return data
-        
