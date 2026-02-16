@@ -34,5 +34,22 @@ created_at = models.DateTimeField(
     blank=True
 )
 
+TEAM_SIZE_CHOICES = [
+
+    ("just_me", "Just me"),
+    ("2_5", "2–5 members"),
+    ("5_10", "5–10 members"),
+    ("10_25", "10–25 members"),
+    ("25_plus", "25+ members"),
+
+]
+
+team_size = models.CharField(
+    max_length=20,
+    choices=TEAM_SIZE_CHOICES,
+    default="just_me"
+)
+
+
 def __str__(self):
     return self.name

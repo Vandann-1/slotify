@@ -25,6 +25,10 @@ class CreateWorkspaceView(APIView):
             tenant_type=tenant_type,
             owner=request.user   # critical
         )
+        team_size = request.data.get("team_size", "just_me")
+        workspace.team_size = team_size
+        workspace.save()
+        
 
         # link user to workspace
         request.user.workspace = workspace
@@ -62,10 +66,12 @@ class ListWorkspaceView(APIView):
         data = [{
             "id": str(workspace.id),
             "name": workspace.name,
+            "team_size": workspace.team_size,
             "slug": workspace.slug,
             "tenant_type": workspace.tenant_type,
             "email": workspace.email,
             "phone": workspace.phone,
+            
         }]
 
         return Response(data)
