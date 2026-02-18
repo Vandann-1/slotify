@@ -1,1 +1,1 @@
-from .tenant import Tenant
+from .tenant import Tenant , TenantMember

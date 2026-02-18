@@ -34,6 +34,44 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 
+from datetime import timedelta
+
+REST_FRAMEWORK = {
+
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+
+        "rest_framework.authentication.SessionAuthentication",
+
+        "rest_framework.authentication.BasicAuthentication",
+
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+
+    ),
+
+    "DEFAULT_PERMISSION_CLASSES": (
+
+        "rest_framework.permissions.IsAuthenticated",
+
+    ),
+
+}
+# python manage.py runserver
+
+
+
+
+
+SIMPLE_JWT = {
+
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+
+    "AUTH_HEADER_TYPES": ("Bearer",),
+
+}
+LOGIN_REDIRECT_URL = "/api/workspaces/"
+LOGOUT_REDIRECT_URL = "/api/auth/login/"
+
+
 # Application definition
 
 INSTALLED_APPS = [

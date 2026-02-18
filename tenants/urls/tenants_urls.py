@@ -1,14 +1,12 @@
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 
-from django.urls import path
-from tenants.views.tenants_views import *
+from tenants.views.tenants_views import TenantViewSet
+# this file is for tenants app urls, it will be included in the main urls.py file of the project
+router = DefaultRouter()
 
+router.register("", TenantViewSet, basename="workspaces")
 
 urlpatterns = [
-   path("create/", CreateWorkspaceView.as_view()),
-   path("list/", ListWorkspaceView.as_view()),
-   path("<slug:slug>/", WorkspaceDetailView.as_view()),
-   path("<slug:slug>/update/", UpdateWorkspaceView.as_view()),
-   # path("<slug:slug>/delete/", DeleteWorkspaceView.as_view()),
-    
-    
+    path("", include(router.urls)),
 ]

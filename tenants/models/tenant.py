@@ -1,55 +1,98 @@
+import uuid
 from django.db import models
-from tenants.choices import TenantType
+from tenants.choices import TenantType , TeamSize , TenantMemberRole
+from django.conf import settings
+from django.utils.text import slugify
+# from apps.tenants.models import TenantMember
 from django.contrib.auth import get_user_model
 
-User = get_user_model()
+User = settings.AUTH_USER_MODEL
 
 
-# User = get_user_model()
 
 class Tenant(models.Model):
+    '''this models make a workspace or tenant 
+    which can have multiple users linked to
+    it with different roles.'''
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-
     tenant_type = models.CharField(
         max_length=20,
-        choices=TenantType.CHOICES
+        choices=TenantType.choices
     )
-
+    slug = models.SlugField(max_length=255, blank=True)
     email = models.EmailField(blank=True, null=True)
-
     phone = models.CharField(max_length=20, blank=True, null=True)
-
     owner = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="tenants",
-        null=True,
-        blank=True
+        related_name="owned_tenants"
+    )
+    team_size = models.CharField(
+        max_length=20,
+        choices=TeamSize.choices,
+        default=TeamSize.JUST_ME
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.name
+
+
+class TenantMember(models.Model):
+    ''' this is helper model to
+        link users to tenants 
+        with specific roles.'''
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
     )
 
-created_at = models.DateTimeField(
-    auto_now_add=True,
-    null=True,
-    blank=True
-)
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="members"
+    )
 
-TEAM_SIZE_CHOICES = [
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="tenant_memberships"
+    )
 
-    ("just_me", "Just me"),
-    ("2_5", "2–5 members"),
-    ("5_10", "5–10 members"),
-    ("10_25", "10–25 members"),
-    ("25_plus", "25+ members"),
+    role = models.CharField(
+        max_length=20,
+        choices=TenantMemberRole.choices,
+        default=TenantMemberRole.PROFESSIONAL
+    )
 
-]
+    is_active = models.BooleanField(
+        default=True
+    )
 
-team_size = models.CharField(
-    max_length=20,
-    choices=TEAM_SIZE_CHOICES,
-    default="just_me"
-)
+    joined_at = models.DateTimeField(
+        auto_now_add=True
+    )
 
+    invited_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invited_members"
+    )
 
-def __str__(self):
-    return self.name
+    class Meta:
+
+        db_table = "tenant_members"
+
+        unique_together = ("tenant", "user")
+
+        ordering = ["-joined_at"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.tenant.name} ({self.role})"
