@@ -3,7 +3,9 @@ from django.db import models
 from tenants.choices import TenantType , TeamSize , TenantMemberRole
 from django.conf import settings
 from django.utils.text import slugify
-# from apps.tenants.models import TenantMember
+
+
+
 from django.contrib.auth import get_user_model
 
 User = settings.AUTH_USER_MODEL
@@ -21,7 +23,7 @@ class Tenant(models.Model):
         max_length=20,
         choices=TenantType.choices
     )
-    slug = models.SlugField(max_length=255, blank=True)
+    slug = models.SlugField(max_length=255, blank=True, unique=True)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, null=True)
     owner = models.ForeignKey(
@@ -37,8 +39,14 @@ class Tenant(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
+    '''this method is to automatically generate a slug from the name if it's not provided.'''
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+        
     def __str__(self):
-        return self.name
+        return self.name    
 
 
 class TenantMember(models.Model):

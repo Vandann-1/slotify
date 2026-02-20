@@ -4,13 +4,18 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from rest_framework_simplejwt.tokens import RefreshToken
-
 from .serializers import RegisterSerializer , LoginSerializer
-
 from tenants.models import Tenant
 
 
 class RegisterView(APIView):
+    """this view is used to register a new user. 
+    it will create a new tenant if the user is an admin."
+    in REACT we will use this view to register a new user.
+    step 1: user will fill the registration form and submit it.
+    step 2: we will send a POST request to /api/accounts/register/ with the form data.
+    step 3: if the request is successful we will get the user data and tenant data (if admin) in response.
+    step 4: we will store the user data and tenant data in the local storage and redirect the user to the dashboard."""
 
     permission_classes = [AllowAny]
 

@@ -13,9 +13,17 @@ urlpatterns = [
 
     path("api-auth/", include("rest_framework.urls")),
 
-    # path("api/workspaces/", include("tenants.urls.tenants_urls")),
 
     path("api/auth/", include("accounts.urls")),
+    path("api/invitations/", include("invitations.urls")),
+
+
+
+
+
+
+
+
 
     path("api/auth/token/", TokenObtainPairView.as_view()),
 

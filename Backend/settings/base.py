@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'tenants',
     'accounts',
+    'invitations',
 ]
 
 MIDDLEWARE = [
@@ -104,8 +105,9 @@ CORS_ALLOW_ALL_ORIGINS = True
 from datetime import timedelta
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",   # ← ADD THIS
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
 }
 
