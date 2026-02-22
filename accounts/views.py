@@ -2,178 +2,167 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import RegisterSerializer , LoginSerializer
 from tenants.models import Tenant
 
 
 class RegisterView(APIView):
-    """this view is used to register a new user. 
-    it will create a new tenant if the user is an admin."
-    in REACT we will use this view to register a new user.
-    step 1: user will fill the registration form and submit it.
-    step 2: we will send a POST request to /api/accounts/register/ with the form data.
-    step 3: if the request is successful we will get the user data and tenant data (if admin) in response.
-    step 4: we will store the user data and tenant data in the local storage and redirect the user to the dashboard."""
+    """
+    Register new user.
+
+    IMPORTANT:
+    - Registration only creates user
+    - Workspace creation happens separately
+    """
 
     permission_classes = [AllowAny]
 
     def post(self, request):
-
         serializer = RegisterSerializer(data=request.data)
 
         if serializer.is_valid():
 
-            # Create user
+            # ==============================
+            # CREATE USER
+            # ==============================
             user = serializer.save()
 
-            tenant = None
-
-
-            # ====================================
-            # CREATE TENANT FOR ADMIN
-            # ====================================
-
-            if user.role == "admin":
-
-                tenant = Tenant.objects.create(
-
-                    name=f"{user.username}'s Workspace",
-
-                    tenant_type="personal",  # must match your TenantType choices
-
-                    email=user.email,
-
-                    owner=user
-
-                )
-
-
-            # ====================================
-            # GENERATE JWT TOKEN
-            # ====================================
-
+            # ==============================
+            # GENERATE JWT
+            # ==============================
             refresh = RefreshToken.for_user(user)
 
-
-            # ====================================
+            # ==============================
             # RESPONSE
-            # ====================================
-
+            # ==============================
             return Response({
-
                 "message": "Registration successful",
-
                 "access": str(refresh.access_token),
-
                 "refresh": str(refresh),
-
                 "user": {
-
                     "id": user.id,
-
                     "username": user.username,
-
                     "email": user.email,
-
-                    "role": user.role
-
                 },
-
-                # include tenant if admin
-                "tenant": {
-
-                    "id": tenant.id,
-
-                    "name": tenant.name,
-
-                    "tenant_type": tenant.tenant_type
-
-                } if tenant else None
-
+                "tenant": None  # no auto workspace
             }, status=status.HTTP_201_CREATED)
-
 
         return Response(
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
 
+
+
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 
 
 class LoginView(APIView):
+    """
+    LoginView
+
+    PURPOSE:
+    • Authenticate user
+    • Issue JWT tokens
+    • Return role-aware payload
+    • Provide tenant context for admins
+    """
 
     permission_classes = [AllowAny]
 
     def post(self, request):
+        serializer = LoginSerializer(data=request.data)
 
-        serializer = LoginSerializer(
-            data=request.data
-        )
+        serializer.is_valid(raise_exception=True)
 
-        if serializer.is_valid():
+        user = serializer.validated_data["user"]
 
-            user = serializer.validated_data["user"]
+        # ================= JWT =================
+        refresh = RefreshToken.for_user(user)
 
-            refresh = RefreshToken.for_user(user)
+        # ================= TENANT CONTEXT =================
+        tenant_data = None
 
-            # get tenant if admin
-            tenant = None
+        # Only admins own tenants
+        if getattr(user, "role", None) == "admin":
+            tenant = Tenant.objects.filter(owner=user).first()
 
-            if user.role == "admin":
+            if tenant:
+                tenant_data = {
+                    "id": tenant.id,
+                    "name": tenant.name,
+                    "tenant_type": tenant.tenant_type,
+                }
 
-                tenant = Tenant.objects.filter(
-                    owner=user
-                ).first()
+        # ================= ROLE FLAGS (VERY USEFUL) =================
+        is_admin = getattr(user, "role", None) == "admin"
+        is_client = getattr(user, "role", None) == "client"
 
-
-            return Response({
-
+        # ================= RESPONSE =================
+        return Response(
+            {
                 "message": "Login successful",
 
+                # tokens
                 "access": str(refresh.access_token),
-
                 "refresh": str(refresh),
 
+                # user info
                 "user": {
-
                     "id": user.id,
-
                     "email": user.email,
-
                     "username": user.username,
-
                     "role": user.role,
-
+                    "is_admin": is_admin,
+                    "is_client": is_client,
                 },
 
-                # tenant info for admin
-                "tenant": {
+                # workspace context
+                "tenant": tenant_data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
-                    "id": tenant.id,
-
-                    "name": tenant.name,
-
-                    "tenant_type": tenant.tenant_type,
-
-                } if tenant else None
-
-            }, status=status.HTTP_200_OK)
-
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )        
 
 class LogoutView(APIView):
+    """
+    LogoutView
+
+    PURPOSE:
+    • Blacklist refresh token
+    • Secure logout for JWT users
+    """
+
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        try:
+            refresh_token = request.data.get("refresh")
 
-        return Response({
+            if not refresh_token:
+                return Response(
+                    {"detail": "Refresh token required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-            "message": "Logout successful"
+            token = RefreshToken(refresh_token)
+            token.blacklist()
 
-        }, status=status.HTTP_200_OK)
+            return Response(
+                {"detail": "Logout successful"},
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            return Response(
+                {"detail": "Invalid token"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

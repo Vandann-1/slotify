@@ -39,10 +39,19 @@ class Tenant(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
-    '''this method is to automatically generate a slug from the name if it's not provided.'''
+    
+    '''this is simple word to string method
+    to return name of tenant when we print it.'''
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            while Tenant.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
+            
         super().save(*args, **kwargs)
         
     def __str__(self):
@@ -101,6 +110,10 @@ class TenantMember(models.Model):
         unique_together = ("tenant", "user")
 
         ordering = ["-joined_at"]
+        indexes = [
+            models.Index(fields=["tenant", "user"]),
+            models.Index(fields=["user"]),
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.tenant.name} ({self.role})"

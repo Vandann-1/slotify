@@ -15,10 +15,13 @@ from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from rest_framework import status
-
+from django.utils import timezone
+from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
-
 from tenants.models.tenant import Tenant
 from tenants.models import TenantMember
 from invitations.models import TenantInvitation
@@ -28,8 +31,7 @@ from invitations.serializers import (
     InviteProfessionalSerializer,
     ValidateInvitationSerializer
 )
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
+
 
 User = get_user_model()
 
@@ -38,71 +40,107 @@ User = get_user_model()
 # ACCEPT INVITATION API
 # ============================================================================
 
-# from rest_framework.permissions import IsAuthenticated
-# from django.shortcuts import get_object_or_404
-# from django.db import transaction
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework import status
-
-# from .models import TenantInvitation, InvitationStatus
-# from .serializers import AcceptInvitationSerializer
-# from tenants.models.membership import TenantMember
 
 
 class AcceptInvitationAPIView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ DRF handles auth
+    """
+    AcceptInvitationAPIView
+
+    PURPOSE:
+    • Authenticated user accepts an invitation
+    • Creates TenantMember safely
+    • Prevents reuse and race conditions
+    • Enforces email ownership security
+
+    SECURITY LEVEL: Production-safe
+    """
+
+    # 🚨 User MUST be logged in
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
-        # 1️⃣ validate body
+        """
+        Accept invitation endpoint
+
+        Flow:
+        1. Validate request body
+        2. Lock invitation row
+        3. Check expiry
+        4. Check status
+        5. Verify email ownership (CRITICAL)
+        6. Create membership if needed
+        7. Mark invitation accepted
+        """
+
+        # ================= STEP 1 — Validate payload =================
         serializer = AcceptInvitationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         token = serializer.validated_data["token"]
 
-        # 2️⃣ get invitation safely
+        # ================= STEP 2 — Fetch invitation with DB lock =================
         invitation = get_object_or_404(
             TenantInvitation.objects.select_for_update(),
             token=token,
         )
 
-        # 3️⃣ check already used
+        user = request.user
+
+        # 🔍 DEBUG (remove in production if noisy)
+        # print("LOGGED USER:", user.email)
+        # print("INVITE EMAIL:", invitation.email)
+
+        # ================= STEP 3 — Expiry guard =================
+        if invitation.is_expired():
+            invitation.status = InvitationStatus.EXPIRED
+            invitation.save(update_fields=["status"])
+
+            return Response(
+                {"detail": "Invitation has expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ================= STEP 4 — Prevent reuse =================
         if invitation.status != InvitationStatus.PENDING:
             return Response(
                 {"detail": "Invitation already processed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user = request.user  # ✅ guaranteed authenticated
+        # ================= STEP 5 — CRITICAL SECURITY CHECK =================
+        # Only the invited email owner can accept
+        if invitation.email.strip().lower() != user.email.strip().lower():
+            raise PermissionDenied(
+                f"This invite was sent to {invitation.email}. "
+                "Please login with that account."
+            )
 
-        # 4️⃣ prevent duplicate membership
+        # ================= STEP 6 — Prevent duplicate membership =================
         member_exists = TenantMember.objects.filter(
             tenant=invitation.tenant,
             user=user,
         ).exists()
 
-        if member_exists:
-            invitation.status = InvitationStatus.ACCEPTED
-            invitation.save(update_fields=["status"])
-            return Response({"detail": "You are already a member."})
+        if not member_exists:
+            TenantMember.objects.create(
+                tenant=invitation.tenant,
+                user=user,
+                role=invitation.role,
+                invited_by=invitation.invited_by,
+            )
 
-        # 5️⃣ create membership
-        TenantMember.objects.create(
-            tenant=invitation.tenant,
-            user=user,
-            role=invitation.role,
-            invited_by=invitation.invited_by,
-        )
-
-        # 6️⃣ mark accepted
+        # ================= STEP 7 — Mark invitation accepted =================
         invitation.status = InvitationStatus.ACCEPTED
-        invitation.save(update_fields=["status"])
+        invitation.accepted_at = timezone.now()
+        invitation.save(update_fields=["status", "accepted_at"])
 
+        # ================= SUCCESS RESPONSE =================
         return Response(
             {"detail": "Invitation accepted successfully."},
             status=status.HTTP_200_OK,
         )
+
 # ============================================================================
 # INVITE PROFESSIONAL API
 # ============================================================================
@@ -116,7 +154,7 @@ class InviteProfessionalAPIView(APIView):
     """
 
     # NOTE: Should be IsAuthenticated in production
-    permission_classes = []
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, slug):

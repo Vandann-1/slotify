@@ -6,15 +6,12 @@ class User(AbstractUser):
 
     full_name = models.CharField(max_length=255)
 
-    ROLE_CHOICES = (
-        ("admin", "Admin"),
-        ("client", "Client"),
-    )
+
 
     role = models.CharField(
         max_length=10,
-        choices=ROLE_CHOICES,
-        default="admin"
+        blank=True,
+        null=True,
     )
     
     def __str__(self):
