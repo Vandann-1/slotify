@@ -130,6 +130,7 @@ class TenantInvitation(models.Model):
             and not self.is_expired()
         )
 
+
     #  IMPORTANT: auto expiry
     def save(self, *args, **kwargs):
         if not self.expires_at:
