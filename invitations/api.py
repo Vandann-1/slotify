@@ -53,30 +53,25 @@ class AcceptInvitationAPIView(APIView):
     • Enforces email ownership security
 
     SECURITY LEVEL: Production-safe
+    For REACT APP, this endpoint is called when user clicks "Accept Invite"
+    link in email, which includes the token.
+    User must be logged in with the same email to accept.
+    url pattern: POST /api/invitations/accept/
+    
     """
 
-    # 🚨 User MUST be logged in
+    # User MUST be logged in
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
         """
         Accept invitation endpoint
-
-        Flow:
-        1. Validate request body
-        2. Lock invitation row
-        3. Check expiry
-        4. Check status
-        5. Verify email ownership (CRITICAL)
-        6. Create membership if needed
-        7. Mark invitation accepted
         """
 
         # ================= STEP 1 — Validate payload =================
         serializer = AcceptInvitationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         token = serializer.validated_data["token"]
 
         # ================= STEP 2 — Fetch invitation with DB lock =================
@@ -86,10 +81,6 @@ class AcceptInvitationAPIView(APIView):
         )
 
         user = request.user
-
-        # 🔍 DEBUG (remove in production if noisy)
-        # print("LOGGED USER:", user.email)
-        # print("INVITE EMAIL:", invitation.email)
 
         # ================= STEP 3 — Expiry guard =================
         if invitation.is_expired():
@@ -109,7 +100,6 @@ class AcceptInvitationAPIView(APIView):
             )
 
         # ================= STEP 5 — CRITICAL SECURITY CHECK =================
-        # Only the invited email owner can accept
         if invitation.email.strip().lower() != user.email.strip().lower():
             raise PermissionDenied(
                 f"This invite was sent to {invitation.email}. "
@@ -130,6 +120,15 @@ class AcceptInvitationAPIView(APIView):
                 invited_by=invitation.invited_by,
             )
 
+        # =================  NEW — Sync user platform role =================
+        current_role = (user.role or "").lower()
+        PROFESSIONAL_ROLES = {"professional", "member", "pro"}
+
+        if invitation.role and invitation.role.lower() in PROFESSIONAL_ROLES:
+            if current_role not in PROFESSIONAL_ROLES:
+                user.role = invitation.role.lower()
+                user.save(update_fields=["role"])
+
         # ================= STEP 7 — Mark invitation accepted =================
         invitation.status = InvitationStatus.ACCEPTED
         invitation.accepted_at = timezone.now()
@@ -148,9 +147,10 @@ class AcceptInvitationAPIView(APIView):
 class InviteProfessionalAPIView(APIView):
     """
     Invite a professional to a tenant workspace.
-
-    POST /api/invitations/workspaces/<slug>/invite/
-    Body: { "email": "...", "role": "..." }
+    invited_by is set to tenant owner for simplicity
+    , but can be extended to support any member.
+    
+    url pattern: POST /api/invitations/workspaces/<slug>/invite/
     """
 
     # NOTE: Should be IsAuthenticated in production
@@ -228,8 +228,10 @@ class InviteProfessionalAPIView(APIView):
 class ValidateInvitationAPIView(APIView):
     """
     Public endpoint to validate invitation token.
+    this is used by the frontend to check if the token in the invite link
+    is valid before showing the accept invite UI.
 
-    POST /api/invitations/validate/
+    url pattern: POST /api/invitations/validate/
     Body: { "token": "<uuid>" }
     """
 
