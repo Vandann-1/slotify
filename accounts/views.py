@@ -8,6 +8,9 @@ from .serializers import RegisterSerializer , LoginSerializer , ProfessionalProf
 from tenants.models import Tenant
 from .models import ProfessionalProfile
 from rest_framework.generics import RetrieveAPIView
+from django.shortcuts import get_list_or_404, get_object_or_404
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 class RegisterView(APIView):
     """
@@ -206,12 +209,10 @@ class ProfessionalProfileView(APIView):
         return self.put(request)
     
 class AdminProfessionalDetailView(RetrieveAPIView):
-    
-
     permission_classes = [IsAdminUser]
 
-    def get(self, request, id):
-        user = get_object_or_404(User, id=id)
+    def get(self, request, user_id):
+        user = get_object_or_404(User, id=user_id)
 
         # auto-healing
         profile, _ = ProfessionalProfile.objects.get_or_create(
