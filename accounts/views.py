@@ -1,12 +1,13 @@
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny,IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import RegisterSerializer , LoginSerializer
+from .serializers import RegisterSerializer , LoginSerializer , ProfessionalProfileSerializer
 from tenants.models import Tenant
-
+from .models import ProfessionalProfile
+from rest_framework.generics import RetrieveAPIView
 
 class RegisterView(APIView):
     """
@@ -166,3 +167,56 @@ class LogoutView(APIView):
                 {"detail": "Invalid token"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+
+class ProfessionalProfileView(APIView):
+    """
+    ProfessionalProfileView
+
+    PURPOSE:
+    • Allow professionals to view/update their profile
+    • Role-based access control
+    """
+
+    permission_classes = [IsAuthenticated]
+    # simple get is used to fetch the profile, and put/patch to update it.
+    def get(self, request):
+        profile, _ = ProfessionalProfile.objects.get_or_create(
+            user=request.user
+        )
+        serializer = ProfessionalProfileSerializer(profile)
+        return Response(serializer.data)
+    # simple put is used to update the profile, and patch is also supported for partial updates.
+    def put(self, request):
+        profile, _ = ProfessionalProfile.objects.get_or_create(
+            user=request.user
+        )
+        serializer = ProfessionalProfileSerializer(
+            profile,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    # optional but nice
+    def patch(self, request):
+        return self.put(request)
+    
+class AdminProfessionalDetailView(RetrieveAPIView):
+    
+
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, id):
+        user = get_object_or_404(User, id=id)
+
+        # auto-healing
+        profile, _ = ProfessionalProfile.objects.get_or_create(
+            user=user
+        )
+
+        serializer = ProfessionalProfileSerializer(profile)
+        return Response(serializer.data)    

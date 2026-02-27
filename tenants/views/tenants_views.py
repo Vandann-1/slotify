@@ -159,6 +159,7 @@ class TenantViewSet(viewsets.ModelViewSet):
                 "email": member.user.email,
                 "role": member.role,
                 "joined_at": member.joined_at,
+                "user_id": member.user.id, 
             }
             for member in members_qs
         ]

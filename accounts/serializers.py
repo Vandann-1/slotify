@@ -120,3 +120,70 @@ class LoginSerializer(serializers.Serializer):
         data["user"] = user
         return data
 
+
+
+
+from .models import ProfessionalProfile
+
+
+class ProfessionalProfileSerializer(serializers.ModelSerializer):
+    """
+    Professional's own profile serializer.
+    Used when PROFESSIONAL user updates their profile.
+    """
+
+
+    '''this email field is read only and sourced from the related User model,
+    so it will be included in the serialized output but cannot be modified through this serializer.'''
+    email = serializers.EmailField(source="user.email", read_only=True)
+
+    class Meta:
+        model = ProfessionalProfile
+        fields = [
+            "id",
+            "email",
+            "qualifications",
+            "specialization",
+            "experience_years",
+            "bio",
+            "linkdin_url",
+            "profile_completed",
+            "verified",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "verified",
+            "profile_completed",
+            "created_at",
+            "updated_at",
+        ]
+
+    # ===== VALIDATION =====
+    def validate_years_of_experience(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "Years of experience cannot be negative."
+            )
+        if value > 60:
+            raise serializers.ValidationError(
+                "Years of experience looks unrealistic."
+            )
+        return value
+
+    # ===== AUTO PROFILE COMPLETION =====
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+
+        important_fields = [
+            instance.qualifications,
+            instance.specialization,
+            instance.experience_years,
+        ]
+
+        if all(important_fields):
+            if not instance.profile_completed:
+                instance.profile_completed = True
+                instance.save(update_fields=["profile_completed"])
+
+        return instance

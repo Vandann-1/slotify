@@ -31,6 +31,7 @@ from invitations.serializers import (
     InviteProfessionalSerializer,
     ValidateInvitationSerializer
 )
+from rest_framework.permissions import AllowAny
 
 
 User = get_user_model()
@@ -235,7 +236,8 @@ class ValidateInvitationAPIView(APIView):
     Body: { "token": "<uuid>" }
     """
 
-    permission_classes = []  # public
+    permission_classes = [AllowAny] 
+    authentication_classes=[]# public
 
     def post(self, request):
         serializer = ValidateInvitationSerializer(data=request.data)
