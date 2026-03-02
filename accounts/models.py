@@ -3,6 +3,7 @@ from django.db import models
 
 
 class User(AbstractUser):
+    ''' this in simple words it is the main user model'''
 
     full_name = models.CharField(max_length=255)
 
@@ -21,6 +22,10 @@ class User(AbstractUser):
     
     
 class ProfessionalProfile(models.Model):
+    '''this professional profile is for the professionals
+    in react POST API  api/professional-profile
+    
+    ''' 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="professional_profile")
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     specialization = models.CharField(max_length=255, blank=True, null=True)
