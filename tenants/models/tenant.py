@@ -102,6 +102,8 @@ class TenantMember(models.Model):
         blank=True,
         related_name="invited_members"
     )
+    
+    removed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
 

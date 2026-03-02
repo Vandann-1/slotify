@@ -1,85 +1,61 @@
+print("🚨 TENANT VIEWSET ACTIVE 🚨")
+from django.utils import timezone
 from rest_framework import viewsets, permissions
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import (
+    ValidationError,
+    NotFound,
+    PermissionDenied,
+)
 
-from tenants.models import Tenant, TenantMember
+from django.contrib.auth.models import User
+
+from tenants.models import Tenant, TenantMember, TenantMemberRole
 from tenants.serializers import TenantSerializer
 
 
+print("🔥 TenantViewSet LOADED 🔥")
 class TenantViewSet(viewsets.ModelViewSet):
     """
     Tenant ViewSet
-
-    Responsibilities:
-    - List workspaces for current user
-    - Create workspace
-    - Workspace dashboard access
-    - Professional memberships feed
-    - List workspace members (NEW)
     """
 
+    queryset = Tenant.objects.all()  # ⭐ IMPORTANT for router
     serializer_class = TenantSerializer
     permission_classes = [permissions.IsAuthenticated]
+
     lookup_field = "slug"
+    lookup_url_kwarg = "slug"  # ⭐ IMPORTANT for custom lookup
 
     # =====================================================
     # WORKSPACE LIST
     # =====================================================
     def get_queryset(self):
-        """
-        Return only workspaces where the current user is an active member.
-        """
         user = self.request.user
-
-        if not user.is_authenticated:
-            raise PermissionDenied("Login to view your workspaces.")
 
         return Tenant.objects.filter(
             members__user=user,
-            is_active=True
+            members__is_active=True,
+            is_active=True,
         ).distinct()
 
     # =====================================================
     # CREATE WORKSPACE
     # =====================================================
     def perform_create(self, serializer):
-        """
-        When a workspace is created, the request user becomes owner.
-        """
-        user = self.request.user
-
-        if not user.is_authenticated:
-            raise PermissionDenied("You must be logged in.")
-
-        serializer.save(owner=user)
+        serializer.save(owner=self.request.user)
 
     # =====================================================
-    # SERIALIZER CONTEXT
-    # =====================================================
-    def get_serializer_context(self):
-        """
-        Ensure request is available inside serializer.
-        """
-        context = super().get_serializer_context()
-        context["request"] = self.request
-        return context
-
-    # =====================================================
-    # ADMIN DASHBOARD
+    # DASHBOARD
     # =====================================================
     @action(detail=True, methods=["get"])
     def dashboard(self, request, slug=None):
-        """
-        GET /api/workspaces/{slug}/dashboard/
-
-        Allows only workspace members.
-        """
         tenant = self.get_object()
 
         is_member = tenant.members.filter(
             user=request.user,
-            is_active=True
+            is_active=True,
         ).exists()
 
         if not is_member:
@@ -87,30 +63,21 @@ class TenantViewSet(viewsets.ModelViewSet):
                 "You are not a member of this workspace."
             )
 
-        return Response({
-            "message": f"Welcome to the dashboard of {tenant.name}!"
-        })
+        return Response(
+            {"message": f"Welcome to the dashboard of {tenant.name}!"}
+        )
 
     # =====================================================
-    # PROFESSIONAL MEMBERSHIPS FEED
+    # MY MEMBERSHIPS
     # =====================================================
     @action(detail=False, methods=["get"], url_path="my-memberships")
     def my_memberships(self, request):
-        """
-        GET /api/workspaces/my-memberships/
-
-        Returns all workspaces where current user is a member.
-        Used by Professional Dashboard.
-        """
-        user = request.user
-
-        if not user.is_authenticated:
-            raise PermissionDenied("Login required.")
-
-        memberships = TenantMember.objects.filter(
-            user=user,
-            is_active=True
-        ).select_related("tenant")
+        memberships = (
+            TenantMember.objects.filter(
+                user=request.user,
+                is_active=True,
+            ).select_related("tenant")
+        )
 
         data = [
             {
@@ -124,42 +91,173 @@ class TenantViewSet(viewsets.ModelViewSet):
         return Response(data)
 
     # =====================================================
-    # WORKSPACE MEMBERS (CRITICAL — NEW)
+    # ADD MEMBER
+    # =====================================================
+    @action(detail=True, methods=["post"], url_path="add-member")
+    def add_member(self, request, slug=None):
+        tenant = self.get_object()
+        requester = request.user
+
+        target_user_id = request.data.get("user_id")
+        role = request.data.get(
+            "role", TenantMemberRole.PROFESSIONAL
+        )
+
+        if not target_user_id:
+            raise ValidationError({"user_id": "This field is required."})
+
+        # requester membership
+        try:
+            requester_member = TenantMember.objects.get(
+                tenant=tenant,
+                user=requester,
+                is_active=True,
+            )
+        except TenantMember.DoesNotExist:
+            raise PermissionDenied(
+                "You are not a member of this workspace."
+            )
+
+        # permission check
+        if requester_member.role not in [
+            TenantMemberRole.OWNER,
+            TenantMemberRole.ADMIN,
+        ]:
+            raise PermissionDenied("You cannot add members.")
+
+        # target user
+        try:
+            target_user = User.objects.get(id=target_user_id)
+        except User.DoesNotExist:
+            raise NotFound("User not found.")
+
+        # ⭐ SAFE MEMBERSHIP LOGIC
+        existing_member = TenantMember.objects.filter(
+            tenant=tenant,
+            user=target_user,
+        ).first()
+
+        # already active
+        if existing_member and existing_member.is_active:
+            raise ValidationError("User is already a member.")
+
+        # reactivate
+        if existing_member and not existing_member.is_active:
+            existing_member.is_active = True
+            existing_member.removed_at = None
+            existing_member.role = role
+            existing_member.invited_by = requester
+            existing_member.save(
+                update_fields=[
+                    "is_active",
+                    "removed_at",
+                    "role",
+                    "invited_by",
+                ]
+            )
+            return Response(
+                {"message": "Member reactivated successfully."}
+            )
+
+        # create new
+        TenantMember.objects.create(
+            tenant=tenant,
+            user=target_user,
+            role=role,
+            invited_by=requester,
+        )
+
+        return Response({"message": "Member added successfully."})
+
+    # =====================================================
+    # REMOVE MEMBER
+    # =====================================================
+    @action(detail=True, methods=["post"], url_path="remove-member")
+    def remove_member(self, request, slug=None):
+        print("remove_member called ")
+        print("Request data:", request.data)
+        tenant = self.get_object()
+        requester = request.user
+        target_user_id = request.data.get("user_id")
+
+        if not target_user_id:
+            raise ValidationError({"user_id": "This field is required."})
+
+        # requester membership
+        try:
+            requester_member = TenantMember.objects.get(
+                tenant=tenant,
+                user=requester,
+                is_active=True,
+            )
+        except TenantMember.DoesNotExist:
+            raise PermissionDenied(
+                "You are not a member of this workspace."
+            )
+
+        # role check
+        if requester_member.role not in [
+            TenantMemberRole.OWNER,
+            TenantMemberRole.ADMIN,
+        ]:
+            raise PermissionDenied(
+                "You are not allowed to remove members."
+            )
+
+        # target membership
+        try:
+            target_member = TenantMember.objects.get(
+                tenant=tenant,
+                user_id=target_user_id,
+                is_active=True,
+            )
+        except TenantMember.DoesNotExist:
+            raise NotFound(
+                "Member not found or already removed."
+            )
+
+        # prevent owner removal
+        if target_member.role == TenantMemberRole.OWNER:
+            raise PermissionDenied("Owner cannot be removed.")
+
+        # soft remove
+        target_member.is_active = False
+        target_member.removed_at = timezone.now()
+        target_member.save(update_fields=["is_active", "removed_at"])
+
+        return Response({"message": "Member removed successfully."})
+
+    # =====================================================
+    # MEMBERS LIST
     # =====================================================
     @action(detail=True, methods=["get"], url_path="members")
     def members(self, request, slug=None):
-        """
-        GET /api/workspaces/{slug}/members/
-
-        Returns all active members of a workspace.
-        Used by TeamMembers panel.
-        """
-
         tenant = self.get_object()
 
-        # Security: only members can view team
         is_member = tenant.members.filter(
             user=request.user,
-            is_active=True
+            is_active=True,
         ).exists()
 
         if not is_member:
             raise PermissionDenied(
-                "You are not allowed to view members of this workspace."
+                "You are not allowed to view members."
             )
 
-        members_qs = TenantMember.objects.filter(
-            tenant=tenant,
-            is_active=True
-        ).select_related("user")
+        members_qs = (
+            TenantMember.objects.filter(
+                tenant=tenant,
+                is_active=True,
+            ).select_related("user")
+        )
 
         data = [
             {
                 "id": str(member.id),
                 "email": member.user.email,
                 "role": member.role,
-                "joined_at": member.joined_at,
-                "user_id": member.user.id, 
+                "joined_at": member.joined_at.isoformat(),
+                "user_id": member.user.id,
             }
             for member in members_qs
         ]
