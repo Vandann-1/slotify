@@ -209,7 +209,7 @@ class ProfessionalProfileView(APIView):
         return self.put(request)
     
 class AdminProfessionalDetailView(RetrieveAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, user_id):
         user = get_object_or_404(User, id=user_id)

@@ -1,4 +1,3 @@
-print("🚨 TENANT VIEWSET ACTIVE 🚨")
 from django.utils import timezone
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
@@ -15,18 +14,44 @@ from tenants.models import Tenant, TenantMember, TenantMemberRole
 from tenants.serializers import TenantSerializer
 
 
-print("🔥 TenantViewSet LOADED 🔥")
 class TenantViewSet(viewsets.ModelViewSet):
     """
-    Tenant ViewSet
+    Tenant ViewSet — production hardened
+    
     """
 
-    queryset = Tenant.objects.all()  # ⭐ IMPORTANT for router
+    queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     lookup_field = "slug"
-    lookup_url_kwarg = "slug"  # ⭐ IMPORTANT for custom lookup
+    lookup_url_kwarg = "slug"
+
+    # =====================================================
+    # INTERNAL HELPERS (VERY IMPORTANT)
+    # =====================================================
+    def _get_membership(self, tenant, user):
+        """Get active membership or raise."""
+        try:
+            return TenantMember.objects.get(
+                tenant=tenant,
+                user=user,
+                is_active=True,
+            )
+        except TenantMember.DoesNotExist:
+            raise PermissionDenied(
+                "You are not a member of this workspace."
+            )
+
+    def _require_admin_or_owner(self, membership):
+        """Ensure user has admin privileges."""
+        if membership.role not in [
+            TenantMemberRole.OWNER,
+            TenantMemberRole.ADMIN,
+        ]:
+            raise PermissionDenied(
+                "You do not have permission to perform this action."
+            )
 
     # =====================================================
     # WORKSPACE LIST
@@ -34,17 +59,21 @@ class TenantViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        return Tenant.objects.filter(
-            members__user=user,
-            members__is_active=True,
-            is_active=True,
-        ).distinct()
+        return (
+            Tenant.objects.filter(
+                members__user=user,
+                members__is_active=True,
+                is_active=True,
+            )
+            .distinct()
+        )
 
     # =====================================================
     # CREATE WORKSPACE
     # =====================================================
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        # Serializer already handles owner creation
+        serializer.save()
 
     # =====================================================
     # DASHBOARD
@@ -53,15 +82,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     def dashboard(self, request, slug=None):
         tenant = self.get_object()
 
-        is_member = tenant.members.filter(
-            user=request.user,
-            is_active=True,
-        ).exists()
-
-        if not is_member:
-            raise PermissionDenied(
-                "You are not a member of this workspace."
-            )
+        self._get_membership(tenant, request.user)
 
         return Response(
             {"message": f"Welcome to the dashboard of {tenant.name}!"}
@@ -106,24 +127,9 @@ class TenantViewSet(viewsets.ModelViewSet):
         if not target_user_id:
             raise ValidationError({"user_id": "This field is required."})
 
-        # requester membership
-        try:
-            requester_member = TenantMember.objects.get(
-                tenant=tenant,
-                user=requester,
-                is_active=True,
-            )
-        except TenantMember.DoesNotExist:
-            raise PermissionDenied(
-                "You are not a member of this workspace."
-            )
-
-        # permission check
-        if requester_member.role not in [
-            TenantMemberRole.OWNER,
-            TenantMemberRole.ADMIN,
-        ]:
-            raise PermissionDenied("You cannot add members.")
+        # requester check
+        requester_member = self._get_membership(tenant, requester)
+        self._require_admin_or_owner(requester_member)
 
         # target user
         try:
@@ -131,7 +137,6 @@ class TenantViewSet(viewsets.ModelViewSet):
         except User.DoesNotExist:
             raise NotFound("User not found.")
 
-        # ⭐ SAFE MEMBERSHIP LOGIC
         existing_member = TenantMember.objects.filter(
             tenant=tenant,
             user=target_user,
@@ -141,7 +146,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         if existing_member and existing_member.is_active:
             raise ValidationError("User is already a member.")
 
-        # reactivate
+        # reactivate soft-deleted member
         if existing_member and not existing_member.is_active:
             existing_member.is_active = True
             existing_member.removed_at = None
@@ -159,7 +164,7 @@ class TenantViewSet(viewsets.ModelViewSet):
                 {"message": "Member reactivated successfully."}
             )
 
-        # create new
+        # create new membership
         TenantMember.objects.create(
             tenant=tenant,
             user=target_user,
@@ -174,8 +179,6 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     @action(detail=True, methods=["post"], url_path="remove-member")
     def remove_member(self, request, slug=None):
-        print("remove_member called ")
-        print("Request data:", request.data)
         tenant = self.get_object()
         requester = request.user
         target_user_id = request.data.get("user_id")
@@ -183,28 +186,9 @@ class TenantViewSet(viewsets.ModelViewSet):
         if not target_user_id:
             raise ValidationError({"user_id": "This field is required."})
 
-        # requester membership
-        try:
-            requester_member = TenantMember.objects.get(
-                tenant=tenant,
-                user=requester,
-                is_active=True,
-            )
-        except TenantMember.DoesNotExist:
-            raise PermissionDenied(
-                "You are not a member of this workspace."
-            )
+        requester_member = self._get_membership(tenant, requester)
+        self._require_admin_or_owner(requester_member)
 
-        # role check
-        if requester_member.role not in [
-            TenantMemberRole.OWNER,
-            TenantMemberRole.ADMIN,
-        ]:
-            raise PermissionDenied(
-                "You are not allowed to remove members."
-            )
-
-        # target membership
         try:
             target_member = TenantMember.objects.get(
                 tenant=tenant,
@@ -234,15 +218,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     def members(self, request, slug=None):
         tenant = self.get_object()
 
-        is_member = tenant.members.filter(
-            user=request.user,
-            is_active=True,
-        ).exists()
-
-        if not is_member:
-            raise PermissionDenied(
-                "You are not allowed to view members."
-            )
+        self._get_membership(tenant, request.user)
 
         members_qs = (
             TenantMember.objects.filter(
