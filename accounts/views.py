@@ -1,8 +1,7 @@
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny,IsAdminUser
+from rest_framework.permissions import AllowAny,IsAdminUser , IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import RegisterSerializer , LoginSerializer , ProfessionalProfileSerializer
 from tenants.models import Tenant
@@ -10,6 +9,14 @@ from .models import ProfessionalProfile
 from rest_framework.generics import RetrieveAPIView
 from django.shortcuts import get_list_or_404, get_object_or_404
 from django.contrib.auth import get_user_model
+
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
+
+
+
+
 User = get_user_model()
 
 class RegisterView(APIView):
@@ -19,9 +26,10 @@ class RegisterView(APIView):
     IMPORTANT:
     - Registration only creates user
     - Workspace creation happens separately
+    
     """
 
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny] # open to all for registration
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -60,12 +68,6 @@ class RegisterView(APIView):
 
 
 
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework_simplejwt.tokens import RefreshToken
-
 
 
 
@@ -78,6 +80,15 @@ class LoginView(APIView):
     • Issue JWT tokens
     • Return role-aware payload
     • Provide tenant context for admins
+    
+    this is the main login view for the application.
+    It handles user authentication and returns a JWT token along
+    with user information and tenant context if applicable.
+    The view checks the user's role to determine if 
+    they are an admin and if they own a tenant, which is included
+    in the response. This allows the frontend to easily 
+    manage user sessions and display relevant information 
+    based on the user's role and workspace context.
     """
 
     permission_classes = [AllowAny]
@@ -145,7 +156,7 @@ class LogoutView(APIView):
     • Secure logout for JWT users
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated] # we can allow any because the token is what authenticates, but it makes sense to require authentication for logout.
 
     def post(self, request):
         try:
@@ -180,6 +191,9 @@ class ProfessionalProfileView(APIView):
     PURPOSE:
     • Allow professionals to view/update their profile
     • Role-based access control
+    here we allow professionals to view and update their profile.
+    The get method retrieves the profile, while the put/patch methods allow for updating it.
+        We use get_or_create to ensure that a profile always exists for the user, which simplifies frontend logic.
     """
 
     permission_classes = [IsAuthenticated]
@@ -208,7 +222,14 @@ class ProfessionalProfileView(APIView):
     def patch(self, request):
         return self.put(request)
     
+    
+    
 class AdminProfessionalDetailView(RetrieveAPIView):
+    ''' this view allows admins to view any professional's profile by user ID.
+    This is useful for admin dashboards where admins need to manage professionals.
+    The view is protected by IsAuthenticated, but in a real application you might
+    want to add an additional check to ensure the user is an admin.
+    '''
     permission_classes = [IsAuthenticated]
 
     def get(self, request, user_id):
@@ -221,3 +242,52 @@ class AdminProfessionalDetailView(RetrieveAPIView):
 
         serializer = ProfessionalProfileSerializer(profile)
         return Response(serializer.data)    
+    
+ 
+
+
+User = get_user_model()
+
+GOOGLE_CLIENT_ID = "17036355569-kqo9lo3vmjli90a59qdk7p0v3g4qovjr.apps.googleusercontent.com"
+
+
+class GoogleLoginView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+
+        token = request.data.get("token")
+
+        if not token:
+            return Response({"detail": "Token missing"}, status=400)
+
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                token,
+                requests.Request()
+            )
+
+            if idinfo["aud"] != GOOGLE_CLIENT_ID:
+                return Response({"detail": "Invalid audience"}, status=400)
+
+            email = idinfo["email"]
+
+        except Exception as e:
+            print("GOOGLE ERROR:", e)
+            return Response({"detail": "Invalid Google token"}, status=400)
+
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={"username": email}
+        )
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": {
+                "email": user.email
+            }
+        })

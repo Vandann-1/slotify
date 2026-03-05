@@ -1,7 +1,7 @@
 
 from django.urls import path
 # from tenants.views.tenants_views import *
-from accounts.views import RegisterView, LoginView, LogoutView , ProfessionalProfileView , AdminProfessionalDetailView
+from accounts.views import RegisterView, LoginView, LogoutView , ProfessionalProfileView , AdminProfessionalDetailView , GoogleLoginView
 
 
 urlpatterns = [
@@ -16,6 +16,7 @@ urlpatterns = [
     path(
     "admin/professionals/<int:user_id>/",
     AdminProfessionalDetailView.as_view(),
-),
+    ),
+    path("google/", GoogleLoginView.as_view(), name="google-login"),
     
 ]
