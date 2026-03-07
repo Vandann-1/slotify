@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-)ogchoizsaljrtt89uteun*u676lh2n&+o80o(w@7fv#_6x+qd
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -56,6 +56,24 @@ REST_FRAMEWORK = {
 
 }
 # python manage.py runserver
+
+# this for a real email backend, for development you can use console backend or file backend
+
+FRONTEND_URL = "https://heapy-hygroscopically-clarinda.ngrok-free.dev"
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = "coderspamm13@gmail.com"
+EMAIL_HOST_PASSWORD = "igeb htgx dbfu ktwt"
+
+DEFAULT_FROM_EMAIL = "Slotify <coderspamm13@gmail.com>"
+
+
+
+
 
 
 

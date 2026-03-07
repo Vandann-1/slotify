@@ -144,38 +144,27 @@ class AcceptInvitationAPIView(APIView):
 # ============================================================================
 # INVITE PROFESSIONAL API
 # ============================================================================
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+
 @method_decorator(csrf_exempt, name='dispatch')
 class InviteProfessionalAPIView(APIView):
-    """
-    Invite a professional to a tenant workspace.
-    invited_by is set to tenant owner for simplicity
-    , but can be extended to support any member.
-    
-    url pattern: POST /api/invitations/workspaces/<slug>/invite/
-    """
 
-    # NOTE: Should be IsAuthenticated in production
     permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request, slug):
-        # -------------------------------
-        # Validate input
-        # -------------------------------
+
         serializer = InviteProfessionalSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data["email"].lower().strip()
         role = serializer.validated_data["role"]
 
-        # -------------------------------
-        # Fetch tenant
-        # -------------------------------
         tenant = get_object_or_404(Tenant, slug=slug)
 
-        # -------------------------------
-        # Check if user already member
-        # -------------------------------
         existing_user = User.objects.filter(email__iexact=email).first()
 
         if existing_user:
@@ -191,9 +180,6 @@ class InviteProfessionalAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # -------------------------------
-        # Prevent duplicate pending invite
-        # -------------------------------
         existing_invite = TenantInvitation.objects.filter(
             tenant=tenant,
             email__iexact=email,
@@ -206,9 +192,6 @@ class InviteProfessionalAPIView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # -------------------------------
-        # Create invitation
-        # -------------------------------
         invitation = TenantInvitation.objects.create(
             tenant=tenant,
             invited_by=tenant.owner,
@@ -217,14 +200,38 @@ class InviteProfessionalAPIView(APIView):
             status=InvitationStatus.PENDING,
         )
 
+        # Create invite link
+        invite_link = f"{settings.FRONTEND_URL}/invite-accept/{invitation.token}"
+
+        # Email message
+        message = f"""
+            Slotify | Workspace Invitation
+
+                You're moving up. You’ve been invited to collaborate within the "{tenant.name}" environment.
+
+                    Click below to sync with your team and scale your workflow:
+
+                        Log In & Accept: {invite_link}
+
+            If this wasn't intended for you, no action is required.
+"""
+
+        # Send email
+        send_mail(
+            subject=f"Invitation to join {tenant.name}",
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+
         return Response(
             {
                 "detail": "Invitation sent successfully.",
-                "token": str(invitation.token),  # remove after email integration
+                "token": str(invitation.token),
             },
             status=status.HTTP_201_CREATED,
-        )
-        
+        )        
         
 class ValidateInvitationAPIView(APIView):
     """
