@@ -59,8 +59,7 @@ REST_FRAMEWORK = {
 
 # this for a real email backend, for development you can use console backend or file backend
 
-FRONTEND_URL = "https://heapy-hygroscopically-clarinda.ngrok-free.dev"
-
+FRONTEND_URL = "http://localhost:5173"
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
@@ -104,6 +103,7 @@ INSTALLED_APPS = [
     'tenants',
     'accounts',
     'invitations',
+    'plans_subsci'
 ]
 
 MIDDLEWARE = [

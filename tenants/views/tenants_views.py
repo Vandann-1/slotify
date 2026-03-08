@@ -12,12 +12,26 @@ from django.contrib.auth.models import User
 
 from tenants.models import Tenant, TenantMember, TenantMemberRole
 from tenants.serializers import TenantSerializer
+from plans_subsci.models import Plans , Subscription
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
+from django.utils import timezone
+
+from tenants.models.tenant import Tenant
+from tenants.models import TenantMember
+from tenants.choices import TenantMemberRole
+from tenants.serializers import TenantSerializer
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class TenantViewSet(viewsets.ModelViewSet):
     """
     Tenant ViewSet — production hardened
-    
     """
 
     queryset = Tenant.objects.all()
@@ -28,10 +42,9 @@ class TenantViewSet(viewsets.ModelViewSet):
     lookup_url_kwarg = "slug"
 
     # =====================================================
-    # INTERNAL HELPERS (VERY IMPORTANT)
+    # INTERNAL HELPERS
     # =====================================================
     def _get_membership(self, tenant, user):
-        """Get active membership or raise."""
         try:
             return TenantMember.objects.get(
                 tenant=tenant,
@@ -44,7 +57,6 @@ class TenantViewSet(viewsets.ModelViewSet):
             )
 
     def _require_admin_or_owner(self, membership):
-        """Ensure user has admin privileges."""
         if membership.role not in [
             TenantMemberRole.OWNER,
             TenantMemberRole.ADMIN,
@@ -72,8 +84,23 @@ class TenantViewSet(viewsets.ModelViewSet):
     # CREATE WORKSPACE
     # =====================================================
     def perform_create(self, serializer):
-        # Serializer already handles owner creation
-        serializer.save()
+
+        tenant = serializer.save()
+
+        free_plan, _ = Plans.objects.get_or_create(
+            name="Free",
+            defaults={
+                "price": 0,
+                "member_limit": 3,
+                "description": "Free plan",
+                "isactive_plan": True,
+            }
+        )
+
+        Subscription.objects.create(
+            tenant=tenant,
+            plan=free_plan
+        )
 
     # =====================================================
     # DASHBOARD
@@ -93,6 +120,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     @action(detail=False, methods=["get"], url_path="my-memberships")
     def my_memberships(self, request):
+
         memberships = (
             TenantMember.objects.filter(
                 user=request.user,
@@ -116,6 +144,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     @action(detail=True, methods=["post"], url_path="add-member")
     def add_member(self, request, slug=None):
+
         tenant = self.get_object()
         requester = request.user
 
@@ -127,26 +156,30 @@ class TenantViewSet(viewsets.ModelViewSet):
         if not target_user_id:
             raise ValidationError({"user_id": "This field is required."})
 
-        # requester check
         requester_member = self._get_membership(tenant, requester)
         self._require_admin_or_owner(requester_member)
 
-        # target user
-        try:
-            target_user = User.objects.get(id=target_user_id)
-        except User.DoesNotExist:
-            raise NotFound("User not found.")
+        plan = tenant.subscription.plan
+        member_count = TenantMember.objects.filter(
+            tenant=tenant,
+            is_active=True
+        ).count()
+
+        if member_count >= plan.member_limit:
+            raise ValidationError(
+                f"Member limit reached for {plan.name} plan."
+            )
+
+        target_user = User.objects.get(id=target_user_id)
 
         existing_member = TenantMember.objects.filter(
             tenant=tenant,
             user=target_user,
         ).first()
 
-        # already active
         if existing_member and existing_member.is_active:
             raise ValidationError("User is already a member.")
 
-        # reactivate soft-deleted member
         if existing_member and not existing_member.is_active:
             existing_member.is_active = True
             existing_member.removed_at = None
@@ -164,7 +197,6 @@ class TenantViewSet(viewsets.ModelViewSet):
                 {"message": "Member reactivated successfully."}
             )
 
-        # create new membership
         TenantMember.objects.create(
             tenant=tenant,
             user=target_user,
@@ -179,6 +211,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     @action(detail=True, methods=["post"], url_path="remove-member")
     def remove_member(self, request, slug=None):
+
         tenant = self.get_object()
         requester = request.user
         target_user_id = request.data.get("user_id")
@@ -189,22 +222,15 @@ class TenantViewSet(viewsets.ModelViewSet):
         requester_member = self._get_membership(tenant, requester)
         self._require_admin_or_owner(requester_member)
 
-        try:
-            target_member = TenantMember.objects.get(
-                tenant=tenant,
-                user_id=target_user_id,
-                is_active=True,
-            )
-        except TenantMember.DoesNotExist:
-            raise NotFound(
-                "Member not found or already removed."
-            )
+        target_member = TenantMember.objects.get(
+            tenant=tenant,
+            user_id=target_user_id,
+            is_active=True,
+        )
 
-        # prevent owner removal
         if target_member.role == TenantMemberRole.OWNER:
             raise PermissionDenied("Owner cannot be removed.")
 
-        # soft remove
         target_member.is_active = False
         target_member.removed_at = timezone.now()
         target_member.save(update_fields=["is_active", "removed_at"])
@@ -212,10 +238,35 @@ class TenantViewSet(viewsets.ModelViewSet):
         return Response({"message": "Member removed successfully."})
 
     # =====================================================
+    # DELETE WORKSPACE
+    # =====================================================
+    def destroy(self, request, slug=None):
+
+        tenant = self.get_object()
+
+        membership = TenantMember.objects.filter(
+            tenant=tenant,
+            user=request.user
+        ).first()
+
+        if not membership or membership.role != TenantMemberRole.OWNER:
+            return Response(
+                {"error": "Only owner can delete workspace"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        tenant.delete()
+
+        return Response(
+            {"message": "Workspace deleted successfully"}
+        )
+
+    # =====================================================
     # MEMBERS LIST
     # =====================================================
-    @action(detail=True, methods=["get"], url_path="members")
+    @action(detail=True, methods=["get"])
     def members(self, request, slug=None):
+
         tenant = self.get_object()
 
         self._get_membership(tenant, request.user)
@@ -232,7 +283,7 @@ class TenantViewSet(viewsets.ModelViewSet):
                 "id": str(member.id),
                 "email": member.user.email,
                 "role": member.role,
-                "joined_at": member.joined_at.isoformat(),
+                "joined_at": member.joined_at.isoformat() if member.joined_at else None,
                 "user_id": member.user.id,
             }
             for member in members_qs

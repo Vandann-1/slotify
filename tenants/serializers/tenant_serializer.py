@@ -8,19 +8,8 @@ class TenantSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Tenant
-        fields = [
-            "id",
-            "name",
-            "tenant_type",
-            "workspace_type",
-            "team_size",
-            "slug",
-            "email",
-            "phone",
-            "created_at",
-            "myrole",
-        ]
-        read_only_fields = ["id", "slug", "created_at"]
+        fields = "__all__"
+        read_only_fields = ["owner"]
 
     def get_myrole(self, obj):
         user = self.context["request"].user

@@ -72,6 +72,7 @@ class Tenant(models.Model):
     def is_team(self):
         return self.workspace_type == WorkspaceType.TEAM 
     
+    auto_drop_schema = True
     
 
 class TenantMember(models.Model):
