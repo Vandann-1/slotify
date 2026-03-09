@@ -29,6 +29,8 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
+
+
 class TenantViewSet(viewsets.ModelViewSet):
     """
     Tenant ViewSet — production hardened
@@ -44,6 +46,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # INTERNAL HELPERS
     # =====================================================
+
     def _get_membership(self, tenant, user):
         try:
             return TenantMember.objects.get(
@@ -68,6 +71,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # WORKSPACE LIST
     # =====================================================
+
     def get_queryset(self):
         user = self.request.user
 
@@ -83,6 +87,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # CREATE WORKSPACE
     # =====================================================
+
     def perform_create(self, serializer):
 
         tenant = serializer.save()
@@ -94,7 +99,7 @@ class TenantViewSet(viewsets.ModelViewSet):
                 "member_limit": 3,
                 "description": "Free plan",
                 "isactive_plan": True,
-            }
+            },
         )
 
         Subscription.objects.create(
@@ -105,8 +110,10 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # DASHBOARD
     # =====================================================
+
     @action(detail=True, methods=["get"])
     def dashboard(self, request, slug=None):
+
         tenant = self.get_object()
 
         self._get_membership(tenant, request.user)
@@ -118,6 +125,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # MY MEMBERSHIPS
     # =====================================================
+
     @action(detail=False, methods=["get"], url_path="my-memberships")
     def my_memberships(self, request):
 
@@ -142,6 +150,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # ADD MEMBER
     # =====================================================
+
     @action(detail=True, methods=["post"], url_path="add-member")
     def add_member(self, request, slug=None):
 
@@ -160,6 +169,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         self._require_admin_or_owner(requester_member)
 
         plan = tenant.subscription.plan
+
         member_count = TenantMember.objects.filter(
             tenant=tenant,
             is_active=True
@@ -193,6 +203,7 @@ class TenantViewSet(viewsets.ModelViewSet):
                     "invited_by",
                 ]
             )
+
             return Response(
                 {"message": "Member reactivated successfully."}
             )
@@ -209,11 +220,13 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # REMOVE MEMBER
     # =====================================================
+
     @action(detail=True, methods=["post"], url_path="remove-member")
     def remove_member(self, request, slug=None):
 
         tenant = self.get_object()
         requester = request.user
+
         target_user_id = request.data.get("user_id")
 
         if not target_user_id:
@@ -233,6 +246,7 @@ class TenantViewSet(viewsets.ModelViewSet):
 
         target_member.is_active = False
         target_member.removed_at = timezone.now()
+
         target_member.save(update_fields=["is_active", "removed_at"])
 
         return Response({"message": "Member removed successfully."})
@@ -240,6 +254,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # DELETE WORKSPACE
     # =====================================================
+
     def destroy(self, request, slug=None):
 
         tenant = self.get_object()
@@ -264,6 +279,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # MEMBERS LIST
     # =====================================================
+
     @action(detail=True, methods=["get"])
     def members(self, request, slug=None):
 
@@ -278,7 +294,7 @@ class TenantViewSet(viewsets.ModelViewSet):
             ).select_related("user")
         )
 
-        data = [
+        members_data = [
             {
                 "id": str(member.id),
                 "email": member.user.email,
@@ -289,4 +305,27 @@ class TenantViewSet(viewsets.ModelViewSet):
             for member in members_qs
         ]
 
-        return Response(data)
+        # ===== PLAN USAGE INFO =====
+
+        subscription = getattr(tenant, "subscription", None)
+
+        plan_name = None
+        member_limit = None
+        members_used = members_qs.count()
+        members_remaining = None
+
+        if subscription and subscription.plan:
+            plan = subscription.plan
+            plan_name = plan.name
+            member_limit = plan.member_limit
+            members_remaining = max(member_limit - members_used, 0)
+
+        return Response(
+            {
+                "plan": plan_name,
+                "member_limit": member_limit,
+                "members_used": members_used,
+                "members_remaining": members_remaining,
+                "members": members_data,
+            }
+        )

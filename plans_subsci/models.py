@@ -8,6 +8,7 @@ class Plans(models.Model):
     price = models.DecimalField(max_digits=11,decimal_places=2,default=0)
     member_limit = models.IntegerField(default=0)
     description = models.TextField(blank=True)
+    features = models.JSONField(default=list)
     isactive_plan = models.BooleanField(default=True)
     
     def __str__(self):
