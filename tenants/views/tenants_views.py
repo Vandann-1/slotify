@@ -30,7 +30,6 @@ User = get_user_model()
 
 
 
-
 class TenantViewSet(viewsets.ModelViewSet):
     """
     Tenant ViewSet — production hardened
@@ -216,6 +215,10 @@ class TenantViewSet(viewsets.ModelViewSet):
         )
 
         return Response({"message": "Member added successfully."})
+    
+
+
+
 
     # =====================================================
     # REMOVE MEMBER
