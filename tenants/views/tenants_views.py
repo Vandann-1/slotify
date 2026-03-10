@@ -97,13 +97,20 @@ class TenantViewSet(viewsets.ModelViewSet):
                 "price": 0,
                 "member_limit": 3,
                 "description": "Free plan",
-                "isactive_plan": True,
+                "is_active": True,
             },
         )
 
         Subscription.objects.create(
             tenant=tenant,
             plan=free_plan
+        )
+
+        TenantMember.objects.create(
+            tenant=tenant,
+            user=self.request.user,
+            role=TenantMemberRole.OWNER,
+            invited_by=self.request.user,
         )
 
     # =====================================================
@@ -174,12 +181,15 @@ class TenantViewSet(viewsets.ModelViewSet):
             is_active=True
         ).count()
 
-        if member_count >= plan.member_limit:
+        if plan.member_limit and member_count >= plan.member_limit:
             raise ValidationError(
                 f"Member limit reached for {plan.name} plan."
             )
 
-        target_user = User.objects.get(id=target_user_id)
+        try:
+            target_user = User.objects.get(id=target_user_id)
+        except User.DoesNotExist:
+            raise ValidationError("User does not exist.")
 
         existing_member = TenantMember.objects.filter(
             tenant=tenant,
@@ -215,10 +225,6 @@ class TenantViewSet(viewsets.ModelViewSet):
         )
 
         return Response({"message": "Member added successfully."})
-    
-
-
-
 
     # =====================================================
     # REMOVE MEMBER
@@ -238,11 +244,14 @@ class TenantViewSet(viewsets.ModelViewSet):
         requester_member = self._get_membership(tenant, requester)
         self._require_admin_or_owner(requester_member)
 
-        target_member = TenantMember.objects.get(
-            tenant=tenant,
-            user_id=target_user_id,
-            is_active=True,
-        )
+        try:
+            target_member = TenantMember.objects.get(
+                tenant=tenant,
+                user_id=target_user_id,
+                is_active=True,
+            )
+        except TenantMember.DoesNotExist:
+            raise ValidationError("Member not found.")
 
         if target_member.role == TenantMemberRole.OWNER:
             raise PermissionDenied("Owner cannot be removed.")
@@ -255,32 +264,7 @@ class TenantViewSet(viewsets.ModelViewSet):
         return Response({"message": "Member removed successfully."})
 
     # =====================================================
-    # DELETE WORKSPACE
-    # =====================================================
-
-    def destroy(self, request, slug=None):
-
-        tenant = self.get_object()
-
-        membership = TenantMember.objects.filter(
-            tenant=tenant,
-            user=request.user
-        ).first()
-
-        if not membership or membership.role != TenantMemberRole.OWNER:
-            return Response(
-                {"error": "Only owner can delete workspace"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        tenant.delete()
-
-        return Response(
-            {"message": "Workspace deleted successfully"}
-        )
-
-    # =====================================================
-    # MEMBERS LIST
+    # MEMBERS LIST (FIXED PLAN LOGIC)
     # =====================================================
 
     @action(detail=True, methods=["get"])
@@ -308,20 +292,20 @@ class TenantViewSet(viewsets.ModelViewSet):
             for member in members_qs
         ]
 
-        # ===== PLAN USAGE INFO =====
-
-        subscription = getattr(tenant, "subscription", None)
-
-        plan_name = None
-        member_limit = None
         members_used = members_qs.count()
-        members_remaining = None
 
-        if subscription and subscription.plan:
+        try:
+            subscription = tenant.subscription
             plan = subscription.plan
+
             plan_name = plan.name
             member_limit = plan.member_limit
             members_remaining = max(member_limit - members_used, 0)
+
+        except Subscription.DoesNotExist:
+            plan_name = None
+            member_limit = None
+            members_remaining = None
 
         return Response(
             {
@@ -332,3 +316,26 @@ class TenantViewSet(viewsets.ModelViewSet):
                 "members": members_data,
             }
         )
+
+    # =====================================================
+    # SUBSCRIPTION INFO
+    # =====================================================
+
+    @action(detail=True, methods=["get"])
+    def subscription(self, request, slug=None):
+
+        tenant = self.get_object()
+
+        self._get_membership(tenant, request.user)
+
+        subscription = tenant.subscription
+        plan = subscription.plan
+
+        return Response({
+            "plan": plan.name,
+            "price": plan.price,
+            "member_limit": plan.member_limit,
+            "features": plan.features,
+            "start_date": subscription.start_date,
+            "is_active": subscription.is_active
+        })
