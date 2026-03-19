@@ -6,7 +6,7 @@ from .views import PlanListViewSet, SubscriptionListViewSet
 
 router = DefaultRouter()
 
-router.register("plans", PlanListViewSet, basename="plans")
+router.register(r'plans', PlanListViewSet, basename="plans")
 
 router.register("subscription", SubscriptionListViewSet, basename="subscription")
 

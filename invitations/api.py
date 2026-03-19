@@ -205,25 +205,98 @@ class InviteProfessionalAPIView(APIView):
 
         # Email message
         message = f"""
-            Slotify | Workspace Invitation
+        <html>
+        <body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
 
-                You're moving up. You’ve been invited to collaborate within the "{tenant.name}" environment.
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f6f8;padding:40px 0;">
+        <tr>
+        <td align="center">
 
-                    Click below to sync with your team and scale your workflow:
+        <table width="600" cellpadding="0" cellspacing="0" border="0" 
+        style="background:#ffffff;border-radius:10px;border:1px solid #e5e7eb;padding:30px;">
 
-                        Log In & Accept: {invite_link}
+        <tr>
+        <td align="center" style="padding-bottom:20px;">
+        <h2 style="margin:0;color:#111827;font-size:24px;">Slotify</h2>
+        <p style="margin:6px 0 0;color:#6b7280;font-size:14px;">
+        Workspace Invitation
+        </p>
+        </td>
+        </tr>
 
-            If this wasn't intended for you, no action is required.
-"""
+        <tr>
+        <td style="font-size:15px;color:#374151;line-height:1.7;padding-top:10px;">
+        Hello,
+        <br><br>
 
+        You've been invited to collaborate in the workspace:
+
+        <br><br>
+
+        <b style="font-size:16px;color:#111827;">{tenant.name}</b>
+
+        <br><br>
+
+        Click the button below to join your team and start working.
+
+        </td>
+        </tr>
+
+        <tr>
+        <td align="center" style="padding:35px 0;">
+
+        <a href="{invite_link}" 
+        style="
+        background:#2563eb;
+        color:#ffffff;
+        text-decoration:none;
+        padding:14px 30px;
+        border-radius:6px;
+        font-size:15px;
+        font-weight:600;
+        display:inline-block;
+        ">
+        Accept Invitation
+        </a>
+
+        </td>
+        </tr>
+
+        <tr>
+        <td style="font-size:13px;color:#6b7280;line-height:1.5;padding-bottom:10px;">
+        If the button doesn't work, copy and paste this link into your browser:
+        <br><br>
+
+        <a href="{invite_link}" style="color:#2563eb;text-decoration:none;">
+        {invite_link}
+        </a>
+        </td>
+        </tr>
+
+        <tr>
+        <td style="font-size:12px;color:#9ca3af;border-top:1px solid #f1f5f9;padding-top:15px;">
+        If you didn’t expect this invitation, you can safely ignore this email.
+        </td>
+        </tr>
+
+        </table>
+
+        </td>
+        </tr>
+        </table>
+
+        </body>
+        </html>
+        """
         # Send email
         send_mail(
-            subject=f"Invitation to join {tenant.name}",
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=False,
-        )
+        subject=f"Invitation to join {tenant.name}",
+        message="You've been invited to a workspace.",  # fallback text
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        html_message=message,   # THIS renders the HTML
+        fail_silently=False,
+    )
 
         return Response(
             {

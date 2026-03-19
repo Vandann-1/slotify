@@ -7,6 +7,7 @@ from rest_framework.exceptions import (
     NotFound,
     PermissionDenied,
 )
+from django.db import transaction
 
 from django.contrib.auth.models import User
 
@@ -87,32 +88,37 @@ class TenantViewSet(viewsets.ModelViewSet):
     # CREATE WORKSPACE
     # =====================================================
 
+    
+
     def perform_create(self, serializer):
 
-        tenant = serializer.save()
+        with transaction.atomic():
 
-        free_plan, _ = Plans.objects.get_or_create(
-            name="Free",
-            defaults={
-                "price": 0,
-                "member_limit": 3,
-                "description": "Free plan",
-                "is_active": True,
-            },
-        )
+            tenant = serializer.save()
 
-        Subscription.objects.create(
-            tenant=tenant,
-            plan=free_plan
-        )
+            free_plan, _ = Plans.objects.get_or_create(
+                name="Free",
+                defaults={
+                    "price": 0,
+                    "member_limit": 3,
+                    "description": "Free plan",
+                    "is_active": True,
+                },
+            )
 
-        TenantMember.objects.create(
-            tenant=tenant,
-            user=self.request.user,
-            role=TenantMemberRole.OWNER,
-            invited_by=self.request.user,
-        )
+            Subscription.objects.get_or_create(
+                tenant=tenant,
+                defaults={"plan": free_plan}
+            )
 
+            TenantMember.objects.get_or_create(
+                tenant=tenant,
+                user=self.request.user,
+                defaults={
+                    "role": TenantMemberRole.OWNER,
+                    "invited_by": self.request.user,
+                }
+            )
     # =====================================================
     # DASHBOARD
     # =====================================================
