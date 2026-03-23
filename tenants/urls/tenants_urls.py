@@ -11,7 +11,7 @@ generate the urls for the tenant viewset.'''
 router = DefaultRouter()
 
 
-router.register("workspaces", TenantViewSet, basename="workspaces")
+router.register(r'workspaces', TenantViewSet, basename="workspaces")
 
 urlpatterns = [
     path("", include(router.urls)),

@@ -1,18 +1,13 @@
 from django.db import models
 
 
-class WorkspaceType(models.TextChoices):
-    SOLO = "SOLO", "Solo"
-    TEAM = "TEAM", "Team"
 
 
-class TenantType(models.TextChoices):
-    DOCTOR = "DOCTOR", "Doctor"
+class TemplateType(models.TextChoices):
     MENTOR = "MENTOR", "Mentor"
-    FREELANCER = "FREELANCER", "Freelancer"
+    FITNESS = "FITNESS", "Fitness"
     TEACHER = "TEACHER", "Teacher"
-    COMPANY = "COMPANY", "Company"
-
+    CONSULTANT = "CONSULTANT", "Consultant"
 
 class TeamSize(models.TextChoices):
     JUST_ME = "JUST_ME", "Just Me"

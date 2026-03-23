@@ -8,6 +8,7 @@ from rest_framework.exceptions import (
     PermissionDenied,
 )
 from django.db import transaction
+from django.core.exceptions import ObjectDoesNotExist
 
 from django.contrib.auth.models import User
 
@@ -125,14 +126,36 @@ class TenantViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def dashboard(self, request, slug=None):
-
         tenant = self.get_object()
-
         self._get_membership(tenant, request.user)
 
-        return Response(
-            {"message": f"Welcome to the dashboard of {tenant.name}!"}
-        )
+        template = tenant.tenant_type   # rename later
+
+        data = {
+            "workspace": tenant.name,
+            "template": template,
+        }
+
+        # COMMON DATA
+        data["total_members"] = TenantMember.objects.filter(
+            tenant=tenant,
+            is_active=True
+        ).count()
+
+        # TEMPLATE BASED LOGIC
+        if template == "MENTOR":
+            data["sections"] = ["students", "sessions", "notes"]
+
+        elif template == "FITNESS":
+            data["sections"] = ["clients", "workouts", "progress"]
+
+        elif template == "TEACHER":
+            data["sections"] = ["students", "assignments", "attendance"]
+
+        elif template == "CONSULTANT":
+            data["sections"] = ["clients", "meetings", "reports"]
+
+        return Response(data)
 
     # =====================================================
     # MY MEMBERSHIPS
@@ -327,18 +350,27 @@ class TenantViewSet(viewsets.ModelViewSet):
     # SUBSCRIPTION INFO
     # =====================================================
 
+
+    from django.core.exceptions import ObjectDoesNotExist
+
     @action(detail=True, methods=["get"])
     def subscription(self, request, slug=None):
 
         tenant = self.get_object()
-
         self._get_membership(tenant, request.user)
 
-        subscription = tenant.subscription
+        try:
+            subscription = tenant.subscription
+        except ObjectDoesNotExist:
+            return Response({
+                "error": "No subscription"
+            }, status=404)
+
         plan = subscription.plan
 
         return Response({
             "plan": plan.name,
+            "is_free": plan.name.lower() == "free",  # 🔥 THIS is what you want
             "price": plan.price,
             "member_limit": plan.member_limit,
             "features": plan.features,
