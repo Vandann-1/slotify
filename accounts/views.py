@@ -71,31 +71,20 @@ class RegisterView(APIView):
 
 
 
+
 class LoginView(APIView):
     """
     LoginView
 
-    PURPOSE:
-    • Authenticate user
-    • Issue JWT tokens
-    • Return role-aware payload
-    • Provide tenant context for admins
-    
-    this is the main login view for the application.
-    It handles user authentication and returns a JWT token along
-    with user information and tenant context if applicable.
-    The view checks the user's role to determine if 
-    they are an admin and if they own a tenant, which is included
-    in the response. This allows the frontend to easily 
-    manage user sessions and display relevant information 
-    based on the user's role and workspace context.
+    • Authenticates user
+    • Returns JWT tokens
+    • Provides role + tenant context
     """
 
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
-
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data["user"]
@@ -103,23 +92,25 @@ class LoginView(APIView):
         # ================= JWT =================
         refresh = RefreshToken.for_user(user)
 
+        # ================= ROLE FLAGS =================
+        role = getattr(user, "role", None)
+        is_admin = role == "admin"
+        is_client = role == "client"
+
         # ================= TENANT CONTEXT =================
         tenant_data = None
 
-        # Only admins own tenants
-        if getattr(user, "role", None) == "admin":
+        if is_admin:
             tenant = Tenant.objects.filter(owner=user).first()
 
             if tenant:
                 tenant_data = {
                     "id": tenant.id,
                     "name": tenant.name,
-                    "tenant_type": tenant.tenant_type,
-                }
 
-        # ================= ROLE FLAGS (VERY USEFUL) =================
-        is_admin = getattr(user, "role", None) == "admin"
-        is_client = getattr(user, "role", None) == "client"
+                    # ✅ FIXED (USE template_type)
+                    "template": tenant.template_type,
+                }
 
         # ================= RESPONSE =================
         return Response(
@@ -135,7 +126,7 @@ class LoginView(APIView):
                     "id": user.id,
                     "email": user.email,
                     "username": user.username,
-                    "role": user.role,
+                    "role": role,
                     "is_admin": is_admin,
                     "is_client": is_client,
                 },
@@ -145,6 +136,7 @@ class LoginView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
 
 
 class LogoutView(APIView):

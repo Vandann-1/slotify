@@ -129,34 +129,82 @@ class TenantViewSet(viewsets.ModelViewSet):
         tenant = self.get_object()
         self._get_membership(tenant, request.user)
 
-        template = tenant.tenant_type   # rename later
+        # ✅ FIXED FIELD NAME
+        template = tenant.template_type
+
+        # ✅ COMMON FEATURES (ALWAYS SAME)
+        common_sections = [
+            "overview",
+            "bookings",
+            "plans",
+            "team",
+            "settings",
+        ]
+
+        # ✅ TEMPLATE SPECIFIC FEATURES
+        if template == "MENTOR":
+            custom_sections = ["students", "sessions", "notes"]
+
+        elif template == "FITNESS":
+            custom_sections = ["clients", "workouts", "progress"]
+
+        elif template == "TEACHER":
+            custom_sections = ["students", "assignments", "attendance"]
+
+        elif template == "CONSULTANT":
+            custom_sections = ["clients", "meetings", "reports"]
+        elif template == "DOCTOR":
+            custom_sections = ["patients", "appointments", "medical_records","checkup_system_ai"]    
+
+        else:
+            custom_sections = []
 
         data = {
             "workspace": tenant.name,
             "template": template,
+
+            # 🔥 FINAL NAV STRUCTURE
+            "sections": ["overview"] + custom_sections + common_sections[1:],
+
+            # EXTRA DATA
+            "total_members": TenantMember.objects.filter(
+                tenant=tenant,
+                is_active=True
+            ).count(),
         }
-
-        # COMMON DATA
-        data["total_members"] = TenantMember.objects.filter(
-            tenant=tenant,
-            is_active=True
-        ).count()
-
-        # TEMPLATE BASED LOGIC
-        if template == "MENTOR":
-            data["sections"] = ["students", "sessions", "notes"]
-
-        elif template == "FITNESS":
-            data["sections"] = ["clients", "workouts", "progress"]
-
-        elif template == "TEACHER":
-            data["sections"] = ["students", "assignments", "attendance"]
-
-        elif template == "CONSULTANT":
-            data["sections"] = ["clients", "meetings", "reports"]
 
         return Response(data)
 
+
+    # =====================================================
+    # INVITATIONS
+    # =====================================================
+
+
+    @action(detail=True, methods=["get"], url_path="invitations")
+    def invitations(self, request, slug=None):
+
+        tenant = self.get_object()
+        self._get_membership(tenant, request.user)
+
+        from invitations.models import TenantInvitation  #  adjust if different app
+
+        invites = TenantInvitation.objects.filter(
+            tenant=tenant,
+            status="pending"
+        ).order_by("-created_at")
+
+        data = [
+            {
+                "id": invite.id,
+                "email": invite.email,
+                "status": invite.status,
+                "created_at": invite.created_at,
+            }
+            for invite in invites
+        ]
+
+        return Response(data)
     # =====================================================
     # MY MEMBERSHIPS
     # =====================================================

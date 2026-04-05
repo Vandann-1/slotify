@@ -8,6 +8,7 @@ class TemplateType(models.TextChoices):
     FITNESS = "FITNESS", "Fitness"
     TEACHER = "TEACHER", "Teacher"
     CONSULTANT = "CONSULTANT", "Consultant"
+    DOCTOR = "DOCTOR", "Doctor"
 
 class TeamSize(models.TextChoices):
     JUST_ME = "JUST_ME", "Just Me"
