@@ -103,7 +103,8 @@ INSTALLED_APPS = [
     'tenants',
     'accounts',
     'invitations',
-    'plans_subsci'
+    'plans_subsci',
+    'booking'
 ]
 
 MIDDLEWARE = [

@@ -42,7 +42,11 @@ class Tenant(models.Model):
 
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
+    workspace_type = models.CharField(
+    max_length=10,
+    choices=[("solo", "Solo"), ("team", "Team")],
+    default="solo"
+)
     # ---------------------------
     # SLUG GENERATION
     # ---------------------------
@@ -65,11 +69,11 @@ class Tenant(models.Model):
     # ---------------------------
     @property
     def is_team(self):
-        return self.members.filter(is_active=True).count() > 1
+        return self.workspace_type == "team"
 
     @property
     def is_solo(self):
-        return not self.is_team
+        return self.workspace_type == "solo"
 
     def __str__(self):
         return self.name

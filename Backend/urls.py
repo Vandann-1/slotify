@@ -8,13 +8,12 @@ from rest_framework_simplejwt.views import (
 )
 
 
-def home(request):
-    return JsonResponse({"status": "Slotify backend running"})
+
 
 
 urlpatterns = [
 
-    path("", home),
+    
 
     path("admin/", admin.site.urls),
 
@@ -22,6 +21,7 @@ urlpatterns = [
     path("api/", include("plans_subsci.urls")),
     path("api/auth/", include("accounts.urls")),
     path("api/invitations/", include("invitations.urls")),
+    path("api/booking/", include("booking.urls")),
 
     path("api-auth/", include("rest_framework.urls")),
 
