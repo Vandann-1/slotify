@@ -18,7 +18,6 @@ from plans_subsci.models import Plans , Subscription
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from django.utils import timezone
 
 from tenants.models.tenant import Tenant
@@ -89,10 +88,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # CREATE WORKSPACE
     # =====================================================
 
-    
-
     def perform_create(self, serializer):
-
         with transaction.atomic():
 
             tenant = serializer.save()
