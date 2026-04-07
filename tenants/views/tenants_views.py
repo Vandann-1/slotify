@@ -34,6 +34,7 @@ User = get_user_model()
 class TenantViewSet(viewsets.ModelViewSet):
     """
     Tenant ViewSet — production hardened
+
     """
 
     queryset = Tenant.objects.all()
@@ -46,7 +47,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # INTERNAL HELPERS
     # =====================================================
-
+    ''' get membership for current user and tenant, or raise 403 if not a member of the tenant'''
     def _get_membership(self, tenant, user):
         try:
             return TenantMember.objects.get(
@@ -58,7 +59,7 @@ class TenantViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "You are not a member of this workspace."
             )
-
+    ''' check if the membership has admin or owner role, or raise 403 if not '''
     def _require_admin_or_owner(self, membership):
         if membership.role not in [
             TenantMemberRole.OWNER,
@@ -71,7 +72,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # WORKSPACE LIST
     # =====================================================
-
+    ''' override queryset to only return tenants where user is an active member of the workspace'''
     def get_queryset(self):
         user = self.request.user
 
@@ -87,7 +88,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # CREATE WORKSPACE
     # =====================================================
-
+    ''''create tenant, assign free plan, and make creator the owner in one transaction'''
     def perform_create(self, serializer):
         with transaction.atomic():
 
@@ -119,16 +120,16 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # DASHBOARD
     # =====================================================
-
+    ''' return dashboard data based on tenant template, and include common sections for all templates'''
     @action(detail=True, methods=["get"])
     def dashboard(self, request, slug=None):
         tenant = self.get_object()
         self._get_membership(tenant, request.user)
 
-        # ✅ FIXED FIELD NAME
+        #  FIXED FIELD NAME
         template = tenant.template_type
 
-        # ✅ COMMON FEATURES (ALWAYS SAME)
+        #  COMMON FEATURES (ALWAYS SAME)
         common_sections = [
             "overview",
             "bookings",
@@ -137,7 +138,7 @@ class TenantViewSet(viewsets.ModelViewSet):
             "settings",
         ]
 
-        # ✅ TEMPLATE SPECIFIC FEATURES
+        #  TEMPLATE SPECIFIC FEATURES
         if template == "MENTOR":
             custom_sections = ["students", "sessions", "notes"]
 
@@ -159,7 +160,7 @@ class TenantViewSet(viewsets.ModelViewSet):
             "workspace": tenant.name,
             "template": template,
 
-            # 🔥 FINAL NAV STRUCTURE
+            #  FINAL NAV STRUCTURE
             "sections": ["overview"] + custom_sections + common_sections[1:],
 
             # EXTRA DATA
@@ -175,7 +176,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # INVITATIONS
     # =====================================================
-
+    ''' list pending invitations for the tenant, only accessible to members of the tenant''' 
 
     @action(detail=True, methods=["get"], url_path="invitations")
     def invitations(self, request, slug=None):
@@ -204,7 +205,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # MY MEMBERSHIPS
     # =====================================================
-
+    ''' list all active memberships for the current user across all tenants, with tenant name and role'''
     @action(detail=False, methods=["get"], url_path="my-memberships")
     def my_memberships(self, request):
 
@@ -229,7 +230,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # ADD MEMBER
     # =====================================================
-
+    ''' add member to tenant, only accessible to admin/owner, checks for plan limits, and can reactivate previously removed members'''
     @action(detail=True, methods=["post"], url_path="add-member")
     def add_member(self, request, slug=None):
 
@@ -302,7 +303,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # REMOVE MEMBER
     # =====================================================
-
+    ''' remove member from tenant, only accessible to admin/owner'''
     @action(detail=True, methods=["post"], url_path="remove-member")
     def remove_member(self, request, slug=None):
 
@@ -339,7 +340,7 @@ class TenantViewSet(viewsets.ModelViewSet):
     # =====================================================
     # MEMBERS LIST (FIXED PLAN LOGIC)
     # =====================================================
-
+    ''' list all active members of the tenant with their roles, and include plan info with correct member limit logic'''
     @action(detail=True, methods=["get"])
     def members(self, request, slug=None):
 
