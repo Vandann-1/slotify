@@ -22,5 +22,3 @@ class TenantMemberRole(models.TextChoices):
     OWNER = "OWNER", "Owner"
     ADMIN = "ADMIN", "Admin"
     PROFESSIONAL = "PROFESSIONAL", "Professional"
-
-cl    
