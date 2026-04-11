@@ -22,6 +22,7 @@ class Availability(models.Model):
 class Booking(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="bookings")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bookings")  # person being booked
     booked_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="booked_appointments")  # client
