@@ -3,7 +3,11 @@ from datetime import datetime, timedelta
 
 def generate_slots(availability, date):
     """
-    Generate slots for a given availability and date
+    this utility function generates time slots based on the availability 
+    and date provided. It calculates the start and end datetime objects 
+    for the given date and availability, then iteratively creates slots 
+    of the specified duration until it reaches the end time. 
+    Each slot is represented as a dictionary containing the start and end times.
     """
 
     slots = []
@@ -27,7 +31,9 @@ def generate_slots(availability, date):
 
 def filter_booked_slots(slots, bookings):
     """
-    Remove already booked slots
+    in this function, we first create a set of booked time ranges from the provided bookings. 
+    Then, we filter the generated slots by checking if their start and end times are not in the booked set. 
+    This ensures that only available slots are returned, effectively removing any slots that have already been booked
     """
 
     booked_set = set(
