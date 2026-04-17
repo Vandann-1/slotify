@@ -6,9 +6,11 @@ from rest_framework import status
 from booking.models import *
 from booking.serializers import BookingSerializer
 from booking.utils import generate_slots, filter_booked_slots
+from rest_framework.permissions import IsAuthenticated
 
 
 class AvailableSlotsView(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
         service_id = request.GET.get("service_id")
         date_str = request.GET.get("date")
@@ -51,6 +53,7 @@ class AvailableSlotsView(APIView):
 
 
 class BookingCreateView(APIView):
+    permission_classes = [IsAuthenticated]
     def post(self, request):
         serializer = BookingSerializer(
             data=request.data,
@@ -68,9 +71,10 @@ class BookingCreateView(APIView):
 
 
 class CancelBookingView(APIView):
+    permission_classes = [IsAuthenticated]
     def post(self, request, booking_id):
         try:
-            booking = Booking.objects.get(id=booking_id)
+            booking = Booking.objects.get(id=booking_id, booked_by=request.user)
         except Booking.DoesNotExist:
             return Response({"error": "Booking not found"}, status=404)
 
@@ -83,6 +87,7 @@ class CancelBookingView(APIView):
 
 
 class UpdateBookingView(APIView):
+    permission_classes = [IsAuthenticated]
     def post(self, request, booking_id):
         try:
             booking = Booking.objects.get(id=booking_id)

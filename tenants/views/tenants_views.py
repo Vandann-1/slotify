@@ -133,6 +133,8 @@ class TenantViewSet(viewsets.ModelViewSet):
         common_sections = [
             "overview",
             "bookings",
+            "services",
+            "availability",
             "plans",
             "team",
             "settings",
