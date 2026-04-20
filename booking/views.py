@@ -4,9 +4,59 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from booking.models import *
-from booking.serializers import BookingSerializer
+from booking.serializers import *
 from booking.utils import generate_slots, filter_booked_slots
 from rest_framework.permissions import IsAuthenticated
+
+
+from rest_framework.views import APIView
+from .serializers import *
+
+
+class ServiceCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        services = Service.objects.all()
+        serializer = ServiceSerializer(services, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = ServiceSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+
+        return Response(serializer.errors, status=400)
+
+
+class ServiceListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        services = Service.objects.all()
+        serializer = ServiceSerializer(services, many=True)
+        return Response(serializer.data)
+
+
+class AvailabilityCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = AvailabilitySerializer(
+            data=request.data,
+            context={"request": request}
+        )
+
+        if serializer.is_valid():
+            availability = serializer.save()
+            return Response(serializer.data, status=201)
+
+        return Response(serializer.errors, status=400)
+
 
 
 class AvailableSlotsView(APIView):
@@ -109,3 +159,11 @@ class UpdateBookingView(APIView):
             })
 
         return Response(serializer.errors, status=400)
+
+class BookingListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        bookings = Booking.objects.all().order_by("-date")
+        serializer = BookingSerializer(bookings, many=True)
+        return Response(serializer.data)        

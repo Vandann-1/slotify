@@ -14,7 +14,12 @@ User = settings.AUTH_USER_MODEL
 
 class Service(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="services")
+    tenant = models.ForeignKey(
+    Tenant,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     duration = models.IntegerField(help_text="In minutes (e.g., 30)")
@@ -24,7 +29,12 @@ class Service(models.Model):
 
 class Availability(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="availabilities")
+    tenant = models.ForeignKey(
+    Tenant,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+)   
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="availabilities")
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="availabilities")
     day_of_week = models.IntegerField( choices=[
