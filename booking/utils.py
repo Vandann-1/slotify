@@ -1,15 +1,41 @@
 from datetime import datetime, timedelta
 
 
-def generate_slots(availability, date):
+
+def filter_booked_slots(slots, bookings):
+
+
     """
-    this utility function generates time slots based on the availability 
-    and date provided. It calculates the start and end datetime objects 
-    for the given date and availability, then iteratively creates slots 
-    of the specified duration until it reaches the end time. 
-    Each slot is represented as a dictionary containing the start and end times.
+    Remove slots that overlap with any existing booking
     """
 
+    filtered = []
+
+    for slot in slots:
+        slot_start = slot["start_time"]
+        slot_end = slot["end_time"]
+
+        overlap_found = False
+
+        for booking in bookings:
+            if has_overlap(
+                slot_start,
+                slot_end,
+                booking.start_time,
+                booking.end_time
+            ):
+                overlap_found = True
+                break
+
+        if not overlap_found:
+            filtered.append(slot)
+
+    return filtered
+
+def has_overlap(start1, end1, start2, end2):
+    return start1 < end2 and start2 < end1
+
+def generate_slots(availability, date):
     slots = []
 
     start_dt = datetime.combine(date, availability.start_time)
@@ -20,35 +46,14 @@ def generate_slots(availability, date):
     current = start_dt
 
     while current + duration <= end_dt:
+        slot_start = current.time()
+        slot_end = (current + duration).time()
+
         slots.append({
-            "start_time": current.time(),
-            "end_time": (current + duration).time(),
+            "start_time": slot_start,
+            "end_time": slot_end,
         })
+
         current += duration
 
     return slots
-
-
-def filter_booked_slots(slots, bookings):
-    """
-    in this function, we first create a set of booked time ranges from the provided bookings. 
-    Then, we filter the generated slots by checking if their start and end times are not in the booked set. 
-    This ensures that only available slots are returned, effectively removing any slots that have already been booked
-    """
-
-    booked_set = set(
-        (b.start_time, b.end_time)
-        for b in bookings
-    )
-
-    return [
-        slot for slot in slots
-        if (slot["start_time"], slot["end_time"]) not in booked_set
-    ]
-
-
-def has_overlap(start1, end1, start2, end2):
-    """
-    Check if two time ranges overlap
-    """
-    return start1 < end2 and start2 < end1

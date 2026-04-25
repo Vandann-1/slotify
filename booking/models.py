@@ -10,6 +10,15 @@ from django.utils import timezone
 
 
 User = settings.AUTH_USER_MODEL
+DAYS_OF_WEEK = [
+    (0, "Monday"),
+    (1, "Tuesday"),
+    (2, "Wednesday"),
+    (3, "Thursday"),
+    (4, "Friday"),
+    (5, "Saturday"),
+    (6, "Sunday"),
+]
 
 
 class Service(models.Model):
@@ -37,15 +46,12 @@ class Availability(models.Model):
 )   
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="availabilities")
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="availabilities")
-    day_of_week = models.IntegerField( choices=[
-        (0, "Monday"),
-        (1, "Tuesday"),
-        (2, "Wednesday"),
-        (3, "Thursday"),
-        (4, "Friday"),
-        (5, "Saturday"),
-        (6, "Sunday")
-    ])
+    day_of_week = models.IntegerField(
+        choices=DAYS_OF_WEEK,
+        null=True,
+        blank=True
+)
+    date_specific = models.DateField(null=True, blank=True, help_text="Overrides day_of_week if set")
     start_time = models.TimeField(default=timezone.now)
     end_time = models.TimeField(default=timezone.now)
     slot_duration = models.IntegerField(help_text="In minutes")
@@ -58,7 +64,7 @@ class Availability(models.Model):
 
 class Booking(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="bookings")
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, null=False, blank=False, related_name="bookings")
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="bookings")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bookings")  # provider
     booked_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="booked_appointments")  # client

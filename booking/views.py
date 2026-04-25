@@ -61,46 +61,58 @@ class AvailabilityCreateView(APIView):
 
 class AvailableSlotsView(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         service_id = request.GET.get("service_id")
         date_str = request.GET.get("date")
 
-        # Validate inputs
         if not service_id or not date_str:
             return Response({"error": "service_id and date required"}, status=400)
 
-        # Convert date
         try:
-            date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
         except ValueError:
-            return Response({"error": "Invalid date format (YYYY-MM-DD)"}, status=400)
+            return Response({"error": "Invalid date format"}, status=400)
 
-        # Get availability (provider side)
+        weekday = date_obj.weekday()
+
+        # Check date-specific override
         availability = Availability.objects.filter(
             service_id=service_id,
+            date_specific=date_obj,
             is_active=True
-        ).first()
-
-        if not availability:
-            return Response({"error": "No availability found"}, status=404)
-
-        # Generate slots
-        slots = generate_slots(availability, date)
-
-        # Get existing bookings
-        bookings = Booking.objects.filter(
-            service_id=service_id,
-            date=date
         )
 
-        # Filter booked slots
+        # Fallback to weekly
+        if not availability.exists():
+            availability = Availability.objects.filter(
+                service_id=service_id,
+                day_of_week=weekday,
+                date_specific__isnull=True,
+                is_active=True
+            )
+
+        if not availability.exists():
+            return Response({"date": str(date_obj), "slots": []})
+
+        # Generate slots
+        slots = []
+        for avail in availability:
+            slots.extend(generate_slots(avail, date_obj))
+
+        # Remove booked slots
+        bookings = Booking.objects.filter(
+            service_id=service_id,
+            date=date_obj,
+            status="confirmed"  # adjust based on your model
+        )
+
         available_slots = filter_booked_slots(slots, bookings)
 
         return Response({
-            "date": str(date),
+            "date": str(date_obj),
             "slots": available_slots
         })
-
 
 class BookingCreateView(APIView):
     permission_classes = [IsAuthenticated]
