@@ -26,7 +26,7 @@ class Service(models.Model):
     tenant = models.ForeignKey(
     Tenant,
     on_delete=models.CASCADE,
-    null=True,
+    null=False,
     blank=True
 )
     name = models.CharField(max_length=255)
@@ -41,7 +41,7 @@ class Availability(models.Model):
     tenant = models.ForeignKey(
     Tenant,
     on_delete=models.CASCADE,
-    null=True,
+    null=False,
     blank=True
 )   
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="availabilities")

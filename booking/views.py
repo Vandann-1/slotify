@@ -2,7 +2,8 @@ from datetime import datetime
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-
+from django.shortcuts import get_object_or_404
+from tenants.models import *
 from booking.models import *
 from booking.serializers import *
 from booking.utils import generate_slots, filter_booked_slots
@@ -13,117 +14,243 @@ from rest_framework.views import APIView
 from .serializers import *
 
 
-class ServiceCreateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        services = Service.objects.all()
-        serializer = ServiceSerializer(services, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        serializer = ServiceSerializer(
-            data=request.data,
-            context={"request": request}
-        )
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=201)
-
-        return Response(serializer.errors, status=400)
-
+# =========================
+# SERVICE LIST
+# =========================
 
 class ServiceListView(APIView):
+
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        services = Service.objects.all()
-        serializer = ServiceSerializer(services, many=True)
-        return Response(serializer.data)
+    def get(self, request, slug):
 
+        tenant = get_object_or_404(
+            Tenant,
+            slug=slug
+        )
+
+        services = Service.objects.filter(
+            tenant=tenant
+        )
+
+        serializer = ServiceSerializer(
+            services,
+            many=True
+        )
+
+        return Response(
+            serializer.data
+        )
+
+
+# =========================
+# SERVICE CREATE
+# =========================
+
+class ServiceCreateView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, slug):
+
+        tenant = get_object_or_404(
+            Tenant,
+            slug=slug
+        )
+
+        serializer = ServiceSerializer(
+            data=request.data
+        )
+
+        if serializer.is_valid():
+
+            serializer.save(
+                tenant=tenant
+            )
+
+            return Response(
+                serializer.data,
+                status=201
+            )
+
+        return Response(
+            serializer.errors,
+            status=400
+        )
+
+from django.shortcuts import get_object_or_404
 
 class AvailabilityCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        serializer = AvailabilitySerializer(
-            data=request.data,
-            context={"request": request}
-        )
+    def post(self, request, slug):
+        tenant = get_object_or_404(Tenant, slug=slug)
 
+        #  Only owner can create
+        if tenant.owner != request.user:
+            return Response({"error": "Not allowed"}, status=403)
+
+        data = request.data.copy()
+
+        #  Force tenant
+        data["tenant"] = tenant.id
+
+        #  Validate service belongs to same tenant
+        service = get_object_or_404(Service, id=data.get("service"))
+
+        if service.tenant != tenant:
+            return Response(
+                {"error": "Service does not belong to this tenant"},
+                status=400
+            )
+
+        serializer = AvailabilitySerializer(
+            data=data,
+            context={"request": request, "tenant": tenant}
+        )
         if serializer.is_valid():
-            availability = serializer.save()
+            serializer.save(user=request.user)  # 🔒 force user
             return Response(serializer.data, status=201)
 
         return Response(serializer.errors, status=400)
+    
+
+
+
+
+
 
 
 
 class AvailableSlotsView(APIView):
+
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
+    def get(self, request, slug):
+
         service_id = request.GET.get("service_id")
         date_str = request.GET.get("date")
 
         if not service_id or not date_str:
-            return Response({"error": "service_id and date required"}, status=400)
+            return Response(
+                {"error": "service_id and date required"},
+                status=400
+            )
 
         try:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+            date_obj = datetime.strptime(
+                date_str,
+                "%Y-%m-%d"
+            ).date()
+
         except ValueError:
-            return Response({"error": "Invalid date format"}, status=400)
+            return Response(
+                {"error": "Invalid date format"},
+                status=400
+            )
 
-        weekday = date_obj.weekday()
+        # Monday=1 Sunday=7
+        weekday = date_obj.weekday() + 1
 
-        # Check date-specific override
+        tenant = get_object_or_404(
+            Tenant,
+            slug=slug
+        )
+
+        print("SERVICE:", service_id)
+        print("DATE:", date_obj)
+        print("WEEKDAY:", weekday)
+
+        # Date specific
         availability = Availability.objects.filter(
+            tenant=tenant,
             service_id=service_id,
             date_specific=date_obj,
             is_active=True
         )
 
-        # Fallback to weekly
+        # Weekly fallback
         if not availability.exists():
+
             availability = Availability.objects.filter(
+                tenant=tenant,
                 service_id=service_id,
                 day_of_week=weekday,
                 date_specific__isnull=True,
                 is_active=True
             )
 
+        print("AVAILABILITY:", availability)
+
         if not availability.exists():
-            return Response({"date": str(date_obj), "slots": []})
+            return Response({
+                "date": str(date_obj),
+                "slots": []
+            })
 
-        # Generate slots
         slots = []
-        for avail in availability:
-            slots.extend(generate_slots(avail, date_obj))
 
-        # Remove booked slots
+        for avail in availability:
+            slots.extend(
+                generate_slots(
+                    avail,
+                    date_obj
+                )
+            )
+
         bookings = Booking.objects.filter(
+            tenant=tenant,
             service_id=service_id,
             date=date_obj,
-            status="confirmed"  # adjust based on your model
+            status="confirmed"
         )
 
-        available_slots = filter_booked_slots(slots, bookings)
+        available_slots = filter_booked_slots(
+            slots,
+            bookings
+        )
+
+        print("FINAL SLOTS:", available_slots)
+
+
+
+        formatted_slots = [
+
+            slot["start_time"].strftime(
+                "%H:%M:%S"
+            )
+
+            for slot in available_slots
+
+        ]
 
         return Response({
+
             "date": str(date_obj),
-            "slots": available_slots
+
+            "slots": formatted_slots
+
         })
+            
+
 
 class BookingCreateView(APIView):
     permission_classes = [IsAuthenticated]
-    def post(self, request):
+
+    def post(self, request, slug):
+        tenant = get_object_or_404(Tenant, slug=slug)
+
         serializer = BookingSerializer(
             data=request.data,
             context={"request": request}
         )
 
         if serializer.is_valid():
-            booking = serializer.save()
+            booking = serializer.save(
+                tenant=tenant,              # ✅ attach tenant
+                booked_by=request.user      # (optional but recommended)
+            )
+
             return Response({
                 "message": "Booking created successfully",
                 "data": BookingSerializer(booking).data
@@ -172,10 +299,45 @@ class UpdateBookingView(APIView):
 
         return Response(serializer.errors, status=400)
 
+
 class BookingListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        bookings = Booking.objects.all().order_by("-date")
+    def get(self, request, slug):
+        tenant = get_object_or_404(Tenant, slug=slug)
+
+        bookings = Booking.objects.filter(tenant=tenant).order_by("-date")
+
         serializer = BookingSerializer(bookings, many=True)
+        return Response(serializer.data)      
+
+
+        
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+from .models import Service
+from .serializers import ServiceSerializer
+
+
+class GlobalServiceListView(APIView):
+
+    permission_classes = []
+
+    def get(self, request):
+
+        query = request.GET.get("search", "")
+
+        services = Service.objects.all()
+
+        if query:
+            services = services.filter(
+                name__icontains=query
+            )
+
+        serializer = ServiceSerializer(
+            services,
+            many=True
+        )
+
         return Response(serializer.data)        

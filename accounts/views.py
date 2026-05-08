@@ -107,7 +107,7 @@ class LoginView(APIView):
                 tenant_data = {
                     "id": tenant.id,
                     "name": tenant.name,
-
+                    "slug": tenant.slug,
                     # ✅ FIXED (USE template_type)
                     "template": tenant.template_type,
                 }
