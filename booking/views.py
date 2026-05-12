@@ -8,6 +8,7 @@ from booking.models import *
 from booking.serializers import *
 from booking.utils import generate_slots, filter_booked_slots
 from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
 
 
 from rest_framework.views import APIView
@@ -111,6 +112,8 @@ class AvailabilityCreateView(APIView):
         if serializer.is_valid():
             serializer.save(user=request.user)  # 🔒 force user
             return Response(serializer.data, status=201)
+
+        print("SERIALIZER ERRORS:", serializer.errors)
 
         return Response(serializer.errors, status=400)
     
@@ -238,25 +241,46 @@ class BookingCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, slug):
+        # 1. TENANT VALIDATION (Ensures the URL slug matches a real tenant)
         tenant = get_object_or_404(Tenant, slug=slug)
 
+        # 2. INITIALIZE SERIALIZER 
+        # We pass tenant and user in context so the serializer can perform 
+        # complex cross-field validations (Overlap, Ownership, etc.)
         serializer = BookingSerializer(
-            data=request.data,
-            context={"request": request}
+            data=request.data, 
+            context={'request': request, 'tenant': tenant}
         )
 
         if serializer.is_valid():
-            booking = serializer.save(
-                tenant=tenant,              # ✅ attach tenant
-                booked_by=request.user      # (optional but recommended)
-            )
+            try:
+                # 5. DATABASE TRANSACTION (Requirement 5)
+                # This ensures that if anything fails during the save process, 
+                # no partial data is written to the DB.
+                with transaction.atomic():
+                    # We use a 'select_for_update' logic inside the serializer/model 
+                    # to lock the rows and prevent race conditions.
+                    booking = serializer.save(
+                        
+                        booked_by=request.user,
+                        status=BookingStatus.CONFIRMED # 7. STATUS SYSTEM
+                    )
 
-            return Response({
-                "message": "Booking created successfully",
-                "data": BookingSerializer(booking).data
-            }, status=201)
+                return Response({
+                    "message": "Booking created successfully",
+                    "data": BookingSerializer(booking).data
+                }, status=201)
 
+            except serializers.ValidationError as e:
+                # 10. ERROR HANDLING (Catching specific domain errors)
+                return Response({
+                    "error": "Booking failed",
+                    "detail": str(e)
+                }, status=400)
+
+        # Returns detailed errors (Overlap, Expired, etc.)
         return Response(serializer.errors, status=400)
+    
 
 
 class CancelBookingView(APIView):

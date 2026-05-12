@@ -32,6 +32,8 @@ class RegisterView(APIView):
     permission_classes = [AllowAny] # open to all for registration
 
     def post(self, request):
+
+        print("REGISTER HIT")
         serializer = RegisterSerializer(data=request.data)
 
         if serializer.is_valid():
@@ -82,46 +84,62 @@ class LoginView(APIView):
     """
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
+
+        # ─────────────────────────────
+        # Validate login data
+        # ─────────────────────────────
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data["user"]
 
-        # ================= JWT =================
+        # ─────────────────────────────
+        # Generate JWT tokens
+        # ─────────────────────────────
         refresh = RefreshToken.for_user(user)
 
-        # ================= ROLE FLAGS =================
+        # ─────────────────────────────
+        # Role flags
+        # ─────────────────────────────
         role = getattr(user, "role", None)
+
         is_admin = role == "admin"
         is_client = role == "client"
 
-        # ================= TENANT CONTEXT =================
+        # ─────────────────────────────
+        # Tenant context
+        # ─────────────────────────────
         tenant_data = None
 
         if is_admin:
-            tenant = Tenant.objects.filter(owner=user).first()
+
+            tenant = Tenant.objects.filter(
+                owner=user
+            ).first()
 
             if tenant:
                 tenant_data = {
                     "id": tenant.id,
                     "name": tenant.name,
                     "slug": tenant.slug,
-                    # ✅ FIXED (USE template_type)
                     "template": tenant.template_type,
                 }
 
-        # ================= RESPONSE =================
+        # ─────────────────────────────
+        # Final response
+        # ─────────────────────────────
         return Response(
             {
                 "message": "Login successful",
 
-                # tokens
+                # JWT tokens
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
 
-                # user info
+                # User info
                 "user": {
                     "id": user.id,
                     "email": user.email,
@@ -131,12 +149,11 @@ class LoginView(APIView):
                     "is_client": is_client,
                 },
 
-                # workspace context
+                # Tenant / workspace info
                 "tenant": tenant_data,
             },
             status=status.HTTP_200_OK,
         )
-
 
 
 class LogoutView(APIView):
