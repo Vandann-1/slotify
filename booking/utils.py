@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta
+from django.shortcuts import get_object_or_404
+from tenants.models import *
+from booking.models import *
+# from booking.utils import generate_slots, filter_booked_slots
+
 
 
 
 def filter_booked_slots(slots, bookings):
-
 
     """
     Remove slots that overlap with any existing booking
@@ -57,3 +61,92 @@ def generate_slots(availability, date):
         current += duration
 
     return slots
+
+
+def get_available_slots(slug, service_id, date_str):
+
+    if not service_id or not date_str:
+        return {
+            "error": "service_id and date required",
+            "status": 400
+        }
+
+    try:
+        date_obj = datetime.strptime(
+            date_str,
+            "%Y-%m-%d"
+        ).date()
+
+    except ValueError:
+        return {
+            "error": "Invalid date format",
+            "status": 400
+        }
+
+    weekday = date_obj.weekday() + 1
+
+    tenant = get_object_or_404(
+        Tenant,
+        slug=slug
+    )
+
+    availability = Availability.objects.filter(
+        tenant=tenant,
+        service_id=service_id,
+        date_specific=date_obj,
+        is_active=True
+    )
+
+    if not availability.exists():
+
+        availability = Availability.objects.filter(
+            tenant=tenant,
+            service_id=service_id,
+            day_of_week=weekday,
+            date_specific__isnull=True,
+            is_active=True
+        )
+
+    if not availability.exists():
+
+        return {
+            "date": str(date_obj),
+            "slots": [],
+            "status": 200
+        }
+
+    slots = []
+
+    for avail in availability:
+
+        slots.extend(
+            generate_slots(
+                avail,
+                date_obj
+            )
+        )
+
+    bookings = Booking.objects.filter(
+        tenant=tenant,
+        service_id=service_id,
+        date=date_obj,
+        status="confirmed"
+    )
+
+    available_slots = filter_booked_slots(
+        slots,
+        bookings
+    )
+
+    formatted_slots = [
+
+        slot["start_time"].strftime("%H:%M:%S")
+
+        for slot in available_slots
+    ]
+
+    return {
+        "date": str(date_obj),
+        "slots": formatted_slots,
+        "status": 200
+    }    

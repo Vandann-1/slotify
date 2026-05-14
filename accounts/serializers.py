@@ -9,80 +9,116 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
+# serializers.py
+
+from rest_framework import serializers
+from .models import User
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     """
     RegisterSerializer
 
     PURPOSE:
     • Create new user safely
-    • Enforce unique email & username
     • Normalize email
+    • Enforce unique username/email
     • Hash password properly
+    • Role assigned from backend context
+      (NOT from frontend request)
     """
 
-    password = serializers.CharField(write_only=True)
-
-    role = serializers.ChoiceField(
-        choices=[("admin", "Admin"), ("client", "Client")],
-        default="admin",
+    password = serializers.CharField(
         write_only=True,
+        min_length=6
     )
 
     class Meta:
         model = User
+
         fields = [
             "full_name",
             "username",
             "email",
             "password",
-            "role",
         ]
 
-    # ============================
+    # =====================================
     # VALIDATE USERNAME
-    # ============================
+    # =====================================
+
     def validate_username(self, value):
+
         value = value.strip()
 
-        if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError("Username already exists")
+        if User.objects.filter(
+            username__iexact=value
+        ).exists():
+
+            raise serializers.ValidationError(
+                "Username already exists"
+            )
 
         return value
 
-    # ============================
+    # =====================================
     # VALIDATE EMAIL
-    # ============================
+    # =====================================
+
     def validate_email(self, value):
+
         value = value.lower().strip()
 
-        if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("Email already exists")
+        if User.objects.filter(
+            email__iexact=value
+        ).exists():
+
+            raise serializers.ValidationError(
+                "Email already exists"
+            )
 
         return value
 
-    # ============================
-    # CREATE USER (CLEAN)
-    # ============================
-    def create(self, validated_data):
-        password = validated_data.pop("password")
-        role = validated_data.pop("role", "admin")
+    # =====================================
+    # CREATE USER
+    # =====================================
 
+    def create(self, validated_data):
+
+        # Get password
+        password = validated_data.pop("password")
+
+        # Role comes from VIEW context
+        # NOT from frontend request
+        role = self.context.get(
+            "role",
+            "client"
+        )
+
+        # Create user
         user = User.objects.create_user(
+
             username=validated_data["username"],
-            email=validated_data["email"].lower().strip(),
+
+            email=validated_data["email"]
+            .lower()
+            .strip(),
+
             full_name=validated_data["full_name"],
+
             password=password,
         )
 
-        # ✅ only if your User model has role field
+        # Assign role safely
         if hasattr(user, "role"):
+
             user.role = role
-            user.save(update_fields=["role"])
+
+            user.save(
+                update_fields=["role"]
+            )
 
         return user
-
-
-
 
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import serializers

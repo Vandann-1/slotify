@@ -9,9 +9,8 @@ from booking.serializers import *
 from booking.utils import generate_slots, filter_booked_slots
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-
-
-from rest_framework.views import APIView
+from booking.services import create_booking_service
+from rest_framework import serializers
 from .serializers import *
 
 
@@ -20,9 +19,7 @@ from .serializers import *
 # =========================
 
 class ServiceListView(APIView):
-
     permission_classes = [IsAuthenticated]
-
     def get(self, request, slug):
 
         tenant = get_object_or_404(
@@ -126,177 +123,174 @@ class AvailabilityCreateView(APIView):
 
 
 class AvailableSlotsView(APIView):
-
+    '''1. This view retrieves available time slots for a specific service on a given date.
+       2. It first validates the input parameters (service_id and date).'''
     permission_classes = [IsAuthenticated]
-
     def get(self, request, slug):
-
-        service_id = request.GET.get("service_id")
-        date_str = request.GET.get("date")
-
-        if not service_id or not date_str:
-            return Response(
-                {"error": "service_id and date required"},
-                status=400
-            )
-
-        try:
-            date_obj = datetime.strptime(
-                date_str,
-                "%Y-%m-%d"
-            ).date()
-
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format"},
-                status=400
-            )
-
-        # Monday=1 Sunday=7
-        weekday = date_obj.weekday() + 1
-
-        tenant = get_object_or_404(
-            Tenant,
-            slug=slug
+        data = get_available_slots(
+            slug=slug,
+            service_id=request.GET.get("service_id"),
+            date_str=request.GET.get("date")
         )
+        status_code = data.pop("status", 200)
 
-        print("SERVICE:", service_id)
-        print("DATE:", date_obj)
-        print("WEEKDAY:", weekday)
-
-        # Date specific
-        availability = Availability.objects.filter(
-            tenant=tenant,
-            service_id=service_id,
-            date_specific=date_obj,
-            is_active=True
+        return Response(
+            data,
+            status=status_code
         )
-
-        # Weekly fallback
-        if not availability.exists():
-
-            availability = Availability.objects.filter(
-                tenant=tenant,
-                service_id=service_id,
-                day_of_week=weekday,
-                date_specific__isnull=True,
-                is_active=True
-            )
-
-        print("AVAILABILITY:", availability)
-
-        if not availability.exists():
-            return Response({
-                "date": str(date_obj),
-                "slots": []
-            })
-
-        slots = []
-
-        for avail in availability:
-            slots.extend(
-                generate_slots(
-                    avail,
-                    date_obj
-                )
-            )
-
-        bookings = Booking.objects.filter(
-            tenant=tenant,
-            service_id=service_id,
-            date=date_obj,
-            status="confirmed"
-        )
-
-        available_slots = filter_booked_slots(
-            slots,
-            bookings
-        )
-
-        print("FINAL SLOTS:", available_slots)
+    
 
 
-
-        formatted_slots = [
-
-            slot["start_time"].strftime(
-                "%H:%M:%S"
-            )
-
-            for slot in available_slots
-
-        ]
-
-        return Response({
-
-            "date": str(date_obj),
-
-            "slots": formatted_slots
-
-        })
-            
 
 
 class BookingCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, slug):
-        # 1. TENANT VALIDATION (Ensures the URL slug matches a real tenant)
-        tenant = get_object_or_404(Tenant, slug=slug)
 
-        # 2. INITIALIZE SERIALIZER 
-        # We pass tenant and user in context so the serializer can perform 
-        # complex cross-field validations (Overlap, Ownership, etc.)
-        serializer = BookingSerializer(
-            data=request.data, 
-            context={'request': request, 'tenant': tenant}
-        )
+        try:
 
-        if serializer.is_valid():
-            try:
-                # 5. DATABASE TRANSACTION (Requirement 5)
-                # This ensures that if anything fails during the save process, 
-                # no partial data is written to the DB.
-                with transaction.atomic():
-                    # We use a 'select_for_update' logic inside the serializer/model 
-                    # to lock the rows and prevent race conditions.
-                    booking = serializer.save(
-                        
-                        booked_by=request.user,
-                        status=BookingStatus.CONFIRMED # 7. STATUS SYSTEM
-                    )
+            booking = create_booking_service(
+                request=request,
+                slug=slug,
+                data=request.data
+            )
 
-                return Response({
-                    "message": "Booking created successfully",
-                    "data": BookingSerializer(booking).data
-                }, status=201)
+            return Response({
+                "message": "Booking created successfully",
+                "data": BookingSerializer(booking).data
+            }, status=201)
 
-            except serializers.ValidationError as e:
-                # 10. ERROR HANDLING (Catching specific domain errors)
-                return Response({
-                    "error": "Booking failed",
-                    "detail": str(e)
-                }, status=400)
+        except serializers.ValidationError as e:
 
-        # Returns detailed errors (Overlap, Expired, etc.)
-        return Response(serializer.errors, status=400)
-    
+            return Response(
+                e.detail,
+                status=400
+            )
 
 
 class CancelBookingView(APIView):
     permission_classes = [IsAuthenticated]
-    def post(self, request, booking_id):
-        try:
-            booking = Booking.objects.get(id=booking_id, booked_by=request.user)
-        except Booking.DoesNotExist:
-            return Response({"error": "Booking not found"}, status=404)
+    def post(self, request, slug, booking_id):
 
-        booking.status = "CANCELLED"
-        booking.save()
+        # =====================================
+        # GET BOOKING
+        # =====================================
+
+        try:
+
+            booking = Booking.objects.select_related(
+                "tenant",
+                "provider",   # admin/professional/staff
+                "customer"    # normal user/customer
+            ).get(
+                id=booking_id,
+                tenant__slug=slug,
+                is_deleted=False
+            )
+
+        except Booking.DoesNotExist:
+
+            return Response(
+                {"error": "Booking not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # =====================================
+        # ROLE CHECK
+        # =====================================
+
+        user = request.user
+
+        is_customer = booking.customer == user
+
+        is_provider = booking.provider == user
+
+        is_admin = user.is_staff
+
+        if not any([
+            is_customer,
+            is_provider,
+            is_admin
+        ]):
+
+            return Response(
+                {"error": "Permission denied"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # =====================================
+        # ALREADY CANCELLED
+        # =====================================
+
+        if booking.status == BookingStatus.CANCELLED:
+
+            return Response(
+                {"error": "Booking already cancelled"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # =====================================
+        # VALIDATE REQUEST
+        # =====================================
+
+        serializer = CancelBookingSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        reason = serializer.validated_data.get(
+            "reason",
+            ""
+        )
+
+        # =====================================
+        # WHO CANCELLED
+        # =====================================
+
+        if is_customer:
+
+            cancelled_by = CancelledBy.CUSTOMER
+
+        elif is_provider:
+
+            cancelled_by = CancelledBy.PROVIDER
+
+        else:
+
+            cancelled_by = CancelledBy.ADMIN
+
+        # =====================================
+        # CANCEL BOOKING
+        # =====================================
+
+        booking.cancel(
+            cancelled_by=cancelled_by,
+            reason=reason
+        )
+
+        # =====================================
+        # RESPONSE
+        # =====================================
 
         return Response({
-            "message": "Booking cancelled successfully"
-        })
+
+            "message":
+            "Booking cancelled successfully",
+
+            "booking_id":
+            str(booking.id),
+            "status":
+            booking.status,
+            "cancelled_by":
+            booking.cancelled_by,
+            "cancelled_at":
+            booking.cancelled_at,
+        }, status=status.HTTP_200_OK)
+    
 
 
 class UpdateBookingView(APIView):
@@ -364,4 +358,28 @@ class GlobalServiceListView(APIView):
             many=True
         )
 
-        return Response(serializer.data)        
+        return Response(serializer.data) 
+
+
+
+
+class MyBookingsView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        bookings = Booking.objects.select_related(
+            "tenant",
+            "service",
+            "provider",
+        ).filter(
+            customer=request.user,
+            is_deleted=False
+        ).order_by("-date", "-start_time")
+
+        serializer = BookingSerializer(
+            bookings,
+            many=True
+        )
+
+        return Response(serializer.data)
+
+

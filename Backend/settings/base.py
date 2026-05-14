@@ -104,7 +104,8 @@ INSTALLED_APPS = [
     'accounts',
     'invitations',
     'plans_subsci',
-    'booking'
+    'booking',
+    'chats'
 ]
 
 MIDDLEWARE = [

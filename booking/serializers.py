@@ -10,7 +10,6 @@ from rest_framework import serializers
 from .models import Booking, Availability
 from .utils import generate_slots
 
-
 from rest_framework import serializers
 from datetime import datetime, timedelta
 from django.utils import timezone
@@ -26,75 +25,154 @@ from .models import Booking, Availability, BookingStatus
 
 class BookingSerializer(serializers.ModelSerializer):
     """
-    Serializer for managing Booking lifecycle, including automated 
-    end-time calculation and availability validation.
+    Booking Serializer
+
+    Responsibilities:
+    • Validate booking request
+    • Validate availability
+    • Auto-calculate end time
+    • Assign provider/customer automatically
+    • Prevent invalid booking creation
     """
 
-    # --- READ-ONLY DISPLAY FIELDS ---
+    # =====================================================
+    # READ-ONLY DISPLAY FIELDS
+    # =====================================================
+
     service_name = serializers.CharField(
-        source="service.name", 
+        source="service.name",
         read_only=True
     )
-    booked_by = serializers.SerializerMethodField()
+
+    customer = serializers.SerializerMethodField()
     provider = serializers.SerializerMethodField()
+
+    # =====================================================
+    # META
+    # =====================================================
 
     class Meta:
         model = Booking
+
         fields = [
-            "id", "date", "start_time", "end_time", "status", 
-            "created_at", "service", "service_name", "booked_by", "provider"
-        ]
-        read_only_fields = [
-            "id", "end_time", "status", "created_at", 
-            "service_name", "booked_by", "provider"
+            "id",
+            "date",
+            "start_time",
+            "end_time",
+            "status",
+            "created_at",
+            "service",
+            "service_name",
+            "customer",
+            "provider",
         ]
 
-    # --- USER DATA REPRESENTATION ---
-    def get_booked_by(self, obj):
-        user = obj.booked_by
-        if not user:
+        read_only_fields = [
+            "id",
+            "end_time",
+            "status",
+            "created_at",
+            "service_name",
+            "customer",
+            "provider",
+        ]
+
+    # =====================================================
+    # CUSTOMER REPRESENTATION
+    # =====================================================
+
+    def get_customer(self, obj):
+
+        customer = obj.customer
+
+        if not customer:
             return None
+
         return {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "full_name": getattr(user, 'full_name', f"{user.first_name} {user.last_name}"),
+            "id": customer.id,
+            "username": customer.username,
+            "email": customer.email,
+            "full_name": getattr(
+                customer,
+                "full_name",
+                f"{customer.first_name} {customer.last_name}"
+            ),
         }
+
+    # =====================================================
+    # PROVIDER REPRESENTATION
+    # =====================================================
 
     def get_provider(self, obj):
-        user = obj.user  # Assuming 'user' field on Booking is the provider
-        if not user:
+
+        provider = obj.provider
+
+        if not provider:
             return None
+
         return {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "full_name": getattr(user, 'full_name', f"{user.first_name} {user.last_name}"),
+            "id": provider.id,
+            "username": provider.username,
+            "email": provider.email,
+            "full_name": getattr(
+                provider,
+                "full_name",
+                f"{provider.first_name} {provider.last_name}"
+            ),
         }
 
-    # --- MAIN VALIDATION LOGIC ---
+    # =====================================================
+    # MAIN VALIDATION LOGIC
+    # =====================================================
+
     def validate(self, data):
+
         request = self.context.get("request")
         tenant = self.context.get("tenant")
-        
+
         service = data.get("service")
         date_obj = data.get("date")
         start_time = data.get("start_time")
 
-        # 1. Tenant Integrity
+        # -------------------------------------------------
+        # 1. TENANT VALIDATION
+        # -------------------------------------------------
+
         if service.tenant != tenant:
-            raise serializers.ValidationError("Service does not belong to this tenant.")
 
-        # 2. Chronological Check
-        now = timezone.now()
+            raise serializers.ValidationError(
+                "Service does not belong to this workspace."
+            )
+
+        # -------------------------------------------------
+        # 2. PAST DATE/TIME VALIDATION
+        # -------------------------------------------------
+
+        now = timezone.localtime()
+
         if date_obj < now.date():
-            raise serializers.ValidationError("Cannot book in the past.")
-        
-        if date_obj == now.date() and start_time < now.time():
-            raise serializers.ValidationError("This time slot has already passed.")
 
-        # 3. Fetch Availability (Priority: Date-specific > Recurring)
+            raise serializers.ValidationError(
+                "Cannot create booking in the past."
+            )
+
+        if (
+            date_obj == now.date()
+            and start_time <= now.time()
+        ):
+
+            raise serializers.ValidationError(
+                "This slot has already passed."
+            )
+
+        # -------------------------------------------------
+        # 3. FIND AVAILABILITY
+        # Priority:
+        # Date-specific > recurring weekday
+        # -------------------------------------------------
+
         weekday = date_obj.weekday() + 1
+
         availability_qs = Availability.objects.filter(
             service=service,
             tenant=tenant,
@@ -102,59 +180,147 @@ class BookingSerializer(serializers.ModelSerializer):
         )
 
         availability = (
-            availability_qs.filter(date_specific=date_obj).first() or
-            availability_qs.filter(day_of_week=weekday, date_specific__isnull=True).first()
+
+            availability_qs.filter(
+                date_specific=date_obj
+            ).first()
+
+            or
+
+            availability_qs.filter(
+                day_of_week=weekday,
+                date_specific__isnull=True
+            ).first()
+
         )
 
-        if not availability:
-            raise serializers.ValidationError("Service not available on this day.")
+        # -------------------------------------------------
+        # 4. AVAILABILITY CHECK
+        # -------------------------------------------------
 
-        # 4. Calculation of End Time
+        if not availability:
+
+            raise serializers.ValidationError(
+                "Service is not available on this day."
+            )
+
+        # -------------------------------------------------
+        # 5. CALCULATE END TIME
+        # -------------------------------------------------
+
         duration = availability.slot_duration
+
         end_time = (
-            datetime.combine(date_obj, start_time) + timedelta(minutes=duration)
+
+            datetime.combine(
+                date_obj,
+                start_time
+            )
+
+            +
+
+            timedelta(minutes=duration)
+
         ).time()
 
-        # 5. Business Hours Check
-        if start_time < availability.start_time or end_time > availability.end_time:
-            raise serializers.ValidationError("Selected time is outside business hours.")
+        # -------------------------------------------------
+        # 6. BUSINESS HOURS VALIDATION
+        # -------------------------------------------------
 
-        # 6. Data Preparation for Creation
+        if (
+            start_time < availability.start_time
+            or
+            end_time > availability.end_time
+        ):
+
+            raise serializers.ValidationError(
+                "Selected slot is outside business hours."
+            )
+
+        # -------------------------------------------------
+        # 7. PREPARE BOOKING DATA
+        # -------------------------------------------------
+
         data.update({
+
+            # Auto-generated end time
             "end_time": end_time,
-            "user": availability.user,      # Assigning the provider from availability
-            "booked_by": request.user,      # Assigning current logged-in user
+
+            # Workspace / tenant
             "tenant": tenant,
-            "availability_obj": availability # Temp helper for create()
+
+            # Provider / professional
+            "provider": availability.user,
+
+            # Logged-in customer/client
+            "customer": request.user,
+
+            # Auto-confirm booking
+            "status": BookingStatus.CONFIRMED,
+
+            # Helper object (removed later)
+            "availability_obj": availability,
         })
 
         return data
 
-    # --- OBJECT CREATION ---
+    # =====================================================
+    # CREATE BOOKING
+    # =====================================================
+
     def create(self, validated_data):
-        # Remove helper from data before model instantiation
-        validated_data.pop("availability_obj", None)
+
+        # Remove temporary helper
+        validated_data.pop(
+            "availability_obj",
+            None
+        )
 
         try:
-            booking = Booking(**validated_data)
-            # Full clean runs model-level validation (like UniqueTogether or overlap checks)
+
+            booking = Booking(
+                **validated_data
+            )
+
+            # Run model-level validation
             booking.full_clean()
+
+            # Save booking
             booking.save()
+
             return booking
-            
+
         except DjangoValidationError as e:
-            print("FULL CLEAN ERROR:", e)
+            print("\n==============================")
+            print("BOOKING VALIDATION ERROR")
+            print("==============================")
 
             if hasattr(e, "message_dict"):
-                print("MESSAGE DICT:", e.message_dict)
-                raise serializers.ValidationError(e.message_dict)
 
-            print("MESSAGES:", e.messages)
+                print("MESSAGE DICT:")
+                print(e.message_dict)
+
+                raise serializers.ValidationError(
+                    e.message_dict
+                )
+
+            print("MESSAGES:")
+            print(e.messages)
+
             raise serializers.ValidationError({
                 "non_field_errors": e.messages
             })
+        
 
 
+class CancelBookingSerializer(serializers.Serializer):
+
+    # Optional cancellation reason
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=500
+    )
 
 
 class ServiceSerializer(

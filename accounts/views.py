@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import RegisterSerializer , LoginSerializer , ProfessionalProfileSerializer
-from tenants.models import Tenant
+from tenants.models import Tenant , TenantMember , TenantMemberRole
 from .models import ProfessionalProfile
 from rest_framework.generics import RetrieveAPIView
 from django.shortcuts import get_list_or_404, get_object_or_404
@@ -12,55 +12,53 @@ from django.contrib.auth import get_user_model
 
 from google.oauth2 import id_token
 from google.auth.transport import requests
-
-
+from tenants.choices import *
+from tenants.models import (TenantMember,
+                            TenantMemberRole)
 
 
 
 User = get_user_model()
 
 class RegisterView(APIView):
-    """
-    Register new user.
-
-    IMPORTANT:
-    - Registration only creates user
-    - Workspace creation happens separately
-    
-    """
-
-    permission_classes = [AllowAny] # open to all for registration
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
-
         print("REGISTER HIT")
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterSerializer(data=request.data,
+
+           context={
+                "role": "client"
+            }
+        )
 
         if serializer.is_valid():
-
-            # ==============================
-            # CREATE USER
-            # ==============================
             user = serializer.save()
-
-            # ==============================
-            # GENERATE JWT
-            # ==============================
             refresh = RefreshToken.for_user(user)
-
-            # ==============================
-            # RESPONSE
-            # ==============================
             return Response({
-                "message": "Registration successful",
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
+
+                "message":
+                "Registration successful",
+
+                "access":
+                str(refresh.access_token),
+
+                "refresh":
+                str(refresh),
+
                 "user": {
                     "id": user.id,
                     "username": user.username,
                     "email": user.email,
+                    "role": user.role,
                 },
-                "tenant": None  # no auto workspace
+
+                "workspace": {
+                    "exists": False,
+                    "slug": None,
+                }
+
             }, status=status.HTTP_201_CREATED)
 
         return Response(
@@ -69,18 +67,21 @@ class RegisterView(APIView):
         )
 
 
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.db import transaction
+from tenants.models import Tenant
+from .serializers import RegisterSerializer
+from django.utils.text import slugify
 
-
-
-
-
-class LoginView(APIView):
+class AdminRegisterView(APIView):
     """
-    LoginView
+    Admin Registration Flow
 
-    • Authenticates user
-    • Returns JWT tokens
-    • Provides role + tenant context
+    FLOW:
+    • Create user
+    • Create tenant/workspace
+    • Create OWNER membership
+    • Return JWT + workspace context
     """
 
     permission_classes = [AllowAny]
@@ -88,72 +89,168 @@ class LoginView(APIView):
 
     def post(self, request):
 
-        # ─────────────────────────────
-        # Validate login data
-        # ─────────────────────────────
+        serializer = RegisterSerializer(
+            data=request.data,
+            context={
+                # optional now
+                # can keep or remove later
+                "role": "admin"
+            }
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+
+            # =================================================
+            # CREATE USER
+            # =================================================
+            user = serializer.save()
+
+            # =================================================
+            # CREATE WORKSPACE / TENANT
+            # =================================================
+            tenant = Tenant.objects.create(
+
+                owner=user,
+
+                name=f"{user.full_name}'s Workspace",
+
+                slug=f"{slugify(user.username)}-{str(user.id)[:6]}"
+            )
+
+            # =================================================
+            # CREATE OWNER MEMBERSHIP
+            # =================================================
+            membership = TenantMember.objects.create(
+
+                tenant=tenant,
+
+                user=user,
+
+                role=TenantMemberRole.OWNER,
+
+                invited_by=user,
+
+                is_active=True,
+            )
+
+            # =================================================
+            # GENERATE JWT TOKENS
+            # =================================================
+            refresh = RefreshToken.for_user(user)
+
+        # =====================================================
+        # FINAL RESPONSE
+        # =====================================================
+        return Response({
+
+            "message": "Admin registration successful",
+
+            # JWT
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+
+            # USER
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+            },
+
+            # MEMBERSHIP
+            "membership": {
+                "role": membership.role,
+            },
+
+            # WORKSPACE
+            "tenant": {
+                "id": tenant.id,
+                "name": tenant.name,
+                "slug": tenant.slug,
+            }
+
+        }, status=status.HTTP_201_CREATED)
+    
+class LoginView(APIView):
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+
+        # ================= VALIDATE =================
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data["user"]
 
-        # ─────────────────────────────
-        # Generate JWT tokens
-        # ─────────────────────────────
+        # ================= TOKENS =================
         refresh = RefreshToken.for_user(user)
 
-        # ─────────────────────────────
-        # Role flags
-        # ─────────────────────────────
-        role = getattr(user, "role", None)
+        # ================= MEMBERSHIP =================
+        membership = (
+            TenantMember.objects
+            .filter(
+                user=user,
+                is_active=True
+            )
+            .select_related("tenant")
+            .first()
+        )
 
-        is_admin = role == "admin"
-        is_client = role == "client"
+        # ================= ROLE FLAGS =================
+        role = membership.role if membership else "client"
 
-        # ─────────────────────────────
-        # Tenant context
-        # ─────────────────────────────
+        is_owner = role == "OWNER"
+        is_admin = role == "ADMIN"
+        is_professional = role == "PROFESSIONAL"
+        is_client = membership is None
+
+        # ================= TENANT =================
         tenant_data = None
 
-        if is_admin:
+        if membership and membership.tenant:
 
-            tenant = Tenant.objects.filter(
-                owner=user
-            ).first()
+            tenant = membership.tenant
 
-            if tenant:
-                tenant_data = {
-                    "id": tenant.id,
-                    "name": tenant.name,
-                    "slug": tenant.slug,
-                    "template": tenant.template_type,
-                }
+            tenant_data = {
+                "id": tenant.id,
+                "name": tenant.name,
+                "slug": tenant.slug,
+                "template": tenant.template_type,
+            }
 
-        # ─────────────────────────────
-        # Final response
-        # ─────────────────────────────
-        return Response(
-            {
-                "message": "Login successful",
+        # ================= RESPONSE =================
+        return Response({
 
-                # JWT tokens
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
+            "message": "Login successful",
 
-                # User info
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "role": role,
-                    "is_admin": is_admin,
-                    "is_client": is_client,
-                },
+            # JWT
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
 
-                # Tenant / workspace info
-                "tenant": tenant_data,
+            # USER
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "full_name": user.full_name,
             },
-            status=status.HTTP_200_OK,
-        )
+
+            # MEMBERSHIP
+            "membership": {
+                "role": role,
+                "is_owner": is_owner,
+                "is_admin": is_admin,
+                "is_professional": is_professional,
+                "is_client": is_client,
+            },
+
+            # TENANT
+            "tenant": tenant_data,
+
+        }, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):

@@ -52,4 +52,8 @@ urlpatterns = [
         UpdateBookingView.as_view()
     ),
 
+    path(
+        "my-bookings/",
+        MyBookingsView.as_view(),
+    ),
 ]
