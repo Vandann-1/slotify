@@ -10,6 +10,8 @@ from decimal import Decimal
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.core.exceptions import ValidationError
+from datetime import datetime, timedelta
 from .choices import (
     BookingStatus,
     CancelledBy,
@@ -52,6 +54,10 @@ class Service(models.Model):
     def __str__(self):
         return f"{self.name} ({self.tenant.name})"
 
+
+
+
+
 # 2. Availability Model (Lives in booking app)
 class Availability(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -92,11 +98,7 @@ ACTIVE_BOOKING_STATUSES = [
 
 class Booking(models.Model):
 
-    id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False
-    )
+    id = models.UUIDField(primary_key=True,  default=uuid.uuid4,  editable=False )
 
     # =========================
     # RELATIONS
@@ -244,6 +246,15 @@ class Booking(models.Model):
     )
     is_deleted = models.BooleanField(default=False)
 
+
+# =============================
+    checked_in_at = models.DateTimeField(
+    null=True,
+    blank=True
+)
+
+
+
     # =========================
     # META
     # =========================
@@ -334,14 +345,25 @@ class Booking(models.Model):
                     "date": "Cannot create booking in the past."
                 })
 
-            if (
-                self.date == now.date()
-                and self.start_time <= now.time()
-            ):
+            appointment_datetime = datetime.combine(
+                self.date,
+                self.start_time
+            )
+
+            appointment_datetime = timezone.make_aware(
+                appointment_datetime
+            )
+
+            minimum_booking_time = (
+                now + timedelta(minutes=2)
+            )
+
+            if appointment_datetime <= minimum_booking_time:
+
                 raise ValidationError({
                     "start_time":
-                    "This slot has already passed."
-                })
+                    "This slot is no longer available."
+                })   
 
         # -------------------------
         # Overlap Validation
@@ -395,22 +417,72 @@ class Booking(models.Model):
             BookingStatus.PENDING,
             BookingStatus.CONFIRMED
         ]
-
     def cancel(
         self,
         cancelled_by,
         reason=None
     ):
 
+        # =====================================
+        # STATUS VALIDATION
+        # =====================================
+
         if not self.can_be_cancelled:
+
             raise ValidationError(
                 "This booking cannot be cancelled."
             )
 
+        # =====================================
+        # CANCELLATION WINDOW CHECK
+        # =====================================
+
+        appointment_datetime = datetime.combine(
+            self.date,
+            self.start_time
+        )
+
+        appointment_datetime = timezone.make_aware(
+            appointment_datetime
+        )
+
+        current_time = timezone.now()
+
+        # -------------------------------------
+        # Past appointment check
+        # -------------------------------------
+
+        if appointment_datetime < current_time:
+
+            raise ValidationError(
+                "Past appointments cannot be cancelled."
+            )
+
+        # -------------------------------------
+        # 1-hour cancellation restriction
+        # -------------------------------------
+
+        time_difference = (
+            appointment_datetime - current_time
+        )
+
+        if time_difference < timedelta(hours=1):
+
+            raise ValidationError(
+                "Cannot cancel within 1 hour of appointment."
+            )
+        # =====================================
+        # CANCEL BOOKING
+        # =====================================
+
         self.status = BookingStatus.CANCELLED
+
         self.cancelled_by = cancelled_by
+
         self.cancellation_reason = reason
+
         self.cancelled_at = timezone.now()
+
         self.save()
 
     def mark_completed(self):
