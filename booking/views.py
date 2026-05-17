@@ -46,50 +46,29 @@ class ServiceListView(APIView):
 # =========================
 
 class ServiceCreateView(APIView):
-
     permission_classes = [IsAuthenticated]
-
     def post(self, request, slug):
 
-        tenant = get_object_or_404(
-            Tenant,
-            slug=slug
-        )
-
-        serializer = ServiceSerializer(
-            data=request.data
-        )
+        tenant = get_object_or_404(Tenant, slug=slug)
+        serializer = ServiceSerializer(data=request.data)
 
         if serializer.is_valid():
+            serializer.save(tenant=tenant)
 
-            serializer.save(
-                tenant=tenant
-            )
+            return Response(serializer.data,status=201)
+        return Response(serializer.errors,status=400 )
 
-            return Response(
-                serializer.data,
-                status=201
-            )
 
-        return Response(
-            serializer.errors,
-            status=400
-        )
-
-from django.shortcuts import get_object_or_404
 
 class AvailabilityCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, slug):
         tenant = get_object_or_404(Tenant, slug=slug)
-
         #  Only owner can create
         if tenant.owner != request.user:
             return Response({"error": "Not allowed"}, status=403)
-
         data = request.data.copy()
-
         #  Force tenant
         data["tenant"] = tenant.id
 
@@ -111,7 +90,6 @@ class AvailabilityCreateView(APIView):
             return Response(serializer.data, status=201)
 
         print("SERIALIZER ERRORS:", serializer.errors)
-
         return Response(serializer.errors, status=400)
     
 

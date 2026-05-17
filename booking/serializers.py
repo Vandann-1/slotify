@@ -54,8 +54,18 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
 
-        fields = [  "id",   "date",   "start_time",  "end_time", "status",
-             "created_at", "service","service_name",  "customer", "provider",]
+        fields = [
+            "id",
+            "date",
+            "start_time",
+            "end_time",
+            "status",
+            "created_at",
+            "service",
+            "service_name",
+            "customer",
+            "provider",
+        ]
 
         read_only_fields = [
             "id",
@@ -334,24 +344,28 @@ class CancelBookingSerializer(serializers.Serializer):
 
 
 class ServiceSerializer(serializers.ModelSerializer):
-    tenant_name = serializers.CharField(source="tenant.name",read_only=True)
-    tenant_slug = serializers.CharField(source="tenant.slug",read_only=True)
+
+    tenant_name = serializers.CharField(source="tenant.name", read_only=True )
+    tenant_slug = serializers.CharField(source="tenant.slug", read_only=True)
 
     class Meta:
+
         model = Service
-        fields = [ "id", "name", "duration","price","tenant_name","tenant_slug",]
+        fields = ["id", "name", "duration", "price", "tenant_name",  "tenant_slug",]
 
 # =========================
 # AVAILABILITY SERIALIZER (SAFE)
 # =========================
-
 class AvailabilitySerializer(serializers.ModelSerializer):
-    day_of_week = serializers.IntegerField(required=False,allow_null=True)
+
+    day_of_week = serializers.IntegerField(required=False, allow_null=True)
     date_specific = serializers.DateField(required=False,allow_null=True)
 
     class Meta:
+
         model = Availability
-        fields = ["service", "day_of_week", "start_time","end_time","slot_duration", "date_specific",]
+
+        fields = ["service", "day_of_week","start_time", "end_time","slot_duration",  "date_specific", ]
 
     # =========================
     # VALIDATE
@@ -368,14 +382,15 @@ class AvailabilitySerializer(serializers.ModelSerializer):
 
         # REQUIRED
         if not service or not start or not end:
-            raise serializers.ValidationError("Missing required fields")
+            raise serializers.ValidationError(
+                "Missing required fields"
+            )
 
         # ONLY ONE
         if (
             (day is None and date is None)
             or
-            (day is not None and date is not None)
-        ):
+            (day is not None and date is not None)):
 
             raise serializers.ValidationError(
                 "Provide either day_of_week OR date_specific"
@@ -383,6 +398,7 @@ class AvailabilitySerializer(serializers.ModelSerializer):
 
         # TIME CHECK
         if start >= end:
+
             raise serializers.ValidationError(
                 "End time must be after start time"
             )
@@ -395,17 +411,20 @@ class AvailabilitySerializer(serializers.ModelSerializer):
         )
 
         if date:
+
             qs = qs.filter(
                 date_specific=date
             )
 
         else:
+
             qs = qs.filter(
                 day_of_week=day,
                 date_specific__isnull=True
             )
 
         for avail in qs:
+
             if not (
                 end <= avail.start_time
                 or
@@ -415,9 +434,13 @@ class AvailabilitySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Availability overlap exists"
                 )
+
         return data
 
-    #CREATE AVAILABILITY
+    # =========================
+    # CREATE
+    # =========================
+
     def create(self, validated_data):
         request = self.context["request"]
         tenant = self.context["tenant"]

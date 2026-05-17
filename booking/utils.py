@@ -27,7 +27,7 @@ def filter_booked_slots(slots, bookings):
                 slot_end,
                 booking.start_time,
                 booking.end_time
-):
+            ):
                 overlap_found = True
                 break
 
@@ -41,9 +41,12 @@ def has_overlap(start1, end1, start2, end2):
 
 def generate_slots(availability, date):
     slots = []
+
     start_dt = datetime.combine(date, availability.start_time)
     end_dt = datetime.combine(date, availability.end_time)
+
     duration = timedelta(minutes=availability.slot_duration)
+
     current = start_dt
 
     while current + duration <= end_dt:
@@ -54,21 +57,39 @@ def generate_slots(availability, date):
             "start_time": slot_start,
             "end_time": slot_end,
         })
+
         current += duration
+
     return slots
 
 
 
 
 def get_available_slots( slug,  service_id,  date_str):
+
+    # =====================================
     # VALIDATION
+    # =====================================
+
     if not service_id or not date_str:
-        return { "error": "service_id and date required", "status": 400}
+
+        return {
+            "error": "service_id and date required",
+            "status": 400
+        }
 
     try:
-        date_obj = datetime.strptime(date_str,"%Y-%m-%d" ).date()
+        date_obj = datetime.strptime(
+            date_str,
+            "%Y-%m-%d"
+        ).date()
+
     except ValueError:
-        return {"error": "Invalid date format","status": 400}
+
+        return {
+            "error": "Invalid date format",
+            "status": 400
+        }
 
     # =====================================
     # TENANT

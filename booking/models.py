@@ -54,10 +54,6 @@ class Service(models.Model):
     def __str__(self):
         return f"{self.name} ({self.tenant.name})"
 
-
-
-
-
 # 2. Availability Model (Lives in booking app)
 class Availability(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -98,7 +94,11 @@ ACTIVE_BOOKING_STATUSES = [
 
 class Booking(models.Model):
 
-    id = models.UUIDField(primary_key=True,  default=uuid.uuid4,  editable=False )
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
 
     # =========================
     # RELATIONS
