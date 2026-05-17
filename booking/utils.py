@@ -41,25 +41,18 @@ def has_overlap(start1, end1, start2, end2):
 
 def generate_slots(availability, date):
     slots = []
-
     start_dt = datetime.combine(date, availability.start_time)
     end_dt = datetime.combine(date, availability.end_time)
-
     duration = timedelta(minutes=availability.slot_duration)
-
     current = start_dt
 
     while current + duration <= end_dt:
         slot_start = current.time()
         slot_end = (current + duration).time()
 
-        slots.append({
-            "start_time": slot_start,
-            "end_time": slot_end,
-        })
+        slots.append({"start_time": slot_start,"end_time": slot_end,})
 
         current += duration
-
     return slots
 
 

@@ -266,7 +266,6 @@ class BookingSerializer(serializers.ModelSerializer):
             # Auto-generated end time
             "end_time": end_time,
 
-            # Workspace / tenant
             "tenant": tenant,
 
             # Provider / professional
@@ -278,16 +277,11 @@ class BookingSerializer(serializers.ModelSerializer):
             # Auto-confirm booking
             "status": BookingStatus.CONFIRMED,
 
-            # Helper object (removed later)
-            "availability_obj": availability,
-        })
+            "availability_obj": availability,})
 
         return data
 
-    # =====================================================
     # CREATE BOOKING
-    # =====================================================
-
     def create(self, validated_data):
 
         # Remove temporary helper
@@ -298,16 +292,11 @@ class BookingSerializer(serializers.ModelSerializer):
 
         try:
 
-            booking = Booking(
-                **validated_data
-            )
+            booking = Booking(**validated_data)
 
             # Run model-level validation
             booking.full_clean()
-
-            # Save booking
             booking.save()
-
             return booking
 
         except DjangoValidationError as e:
@@ -320,16 +309,12 @@ class BookingSerializer(serializers.ModelSerializer):
                 print("MESSAGE DICT:")
                 print(e.message_dict)
 
-                raise serializers.ValidationError(
-                    e.message_dict
-                )
+                raise serializers.ValidationError(e.message_dict)
 
             print("MESSAGES:")
             print(e.messages)
 
-            raise serializers.ValidationError({
-                "non_field_errors": e.messages
-            })
+            raise serializers.ValidationError({"non_field_errors": e.messages})
         
 
 
