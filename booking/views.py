@@ -12,6 +12,7 @@ from django.db import transaction
 from booking.services import create_booking_service
 from rest_framework import serializers
 from .serializers import *
+from .services import create_booking_service, cancel_booking_service
 
 
 # =========================
@@ -149,18 +150,14 @@ class BookingCreateView(APIView):
 
 class CancelBookingView(APIView):
     permission_classes = [IsAuthenticated]
+
     def post(self, request, slug, booking_id):
-
-        # =====================================
-        # GET BOOKING
-        # =====================================
-
         try:
 
             booking = Booking.objects.select_related(
                 "tenant",
-                "provider",   # admin/professional/staff
-                "customer"    # normal user/customer
+                "provider",
+                "customer"
             ).get(
                 id=booking_id,
                 tenant__slug=slug,
@@ -173,44 +170,6 @@ class CancelBookingView(APIView):
                 {"error": "Booking not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        # =====================================
-        # ROLE CHECK
-        # =====================================
-
-        user = request.user
-
-        is_customer = booking.customer == user
-
-        is_provider = booking.provider == user
-
-        is_admin = user.is_staff
-
-        if not any([
-            is_customer,
-            is_provider,
-            is_admin
-        ]):
-
-            return Response(
-                {"error": "Permission denied"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # =====================================
-        # ALREADY CANCELLED
-        # =====================================
-
-        if booking.status == BookingStatus.CANCELLED:
-
-            return Response(
-                {"error": "Booking already cancelled"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # =====================================
-        # VALIDATE REQUEST
-        # =====================================
 
         serializer = CancelBookingSerializer(
             data=request.data
@@ -225,34 +184,20 @@ class CancelBookingView(APIView):
             ""
         )
 
-        # =====================================
-        # WHO CANCELLED
-        # =====================================
+        try:
 
-        if is_customer:
+            booking = cancel_booking_service(
+                user=request.user,
+                booking=booking,
+                reason=reason
+            )
 
-            cancelled_by = CancelledBy.CUSTOMER
+        except serializers.ValidationError as e:
 
-        elif is_provider:
-
-            cancelled_by = CancelledBy.PROVIDER
-
-        else:
-
-            cancelled_by = CancelledBy.ADMIN
-
-        # =====================================
-        # CANCEL BOOKING
-        # =====================================
-
-        booking.cancel(
-            cancelled_by=cancelled_by,
-            reason=reason
-        )
-
-        # =====================================
-        # RESPONSE
-        # =====================================
+            return Response(
+                e.detail,
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         return Response({
 
@@ -261,39 +206,19 @@ class CancelBookingView(APIView):
 
             "booking_id":
             str(booking.id),
+
             "status":
             booking.status,
+
             "cancelled_by":
             booking.cancelled_by,
+
             "cancelled_at":
             booking.cancelled_at,
+
         }, status=status.HTTP_200_OK)
     
 
-
-class UpdateBookingView(APIView):
-    permission_classes = [IsAuthenticated]
-    def post(self, request, booking_id):
-        try:
-            booking = Booking.objects.get(id=booking_id)
-        except Booking.DoesNotExist:
-            return Response({"error": "Booking not found"}, status=404)
-
-        serializer = BookingSerializer(
-            booking,
-            data=request.data,
-            partial=True,
-            context={"request": request}
-        )
-
-        if serializer.is_valid():
-            updated_booking = serializer.save()
-            return Response({
-                "message": "Booking updated successfully",
-                "data": BookingSerializer(updated_booking).data
-            })
-
-        return Response(serializer.errors, status=400)
 
 
 class BookingListView(APIView):

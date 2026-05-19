@@ -47,10 +47,7 @@ urlpatterns = [
         CancelBookingView.as_view()
     ),
 
-    path(
-        "tenant/<slug:slug>/booking/<uuid:booking_id>/update/",
-        UpdateBookingView.as_view()
-    ),
+
 
     path(
         "my-bookings/",

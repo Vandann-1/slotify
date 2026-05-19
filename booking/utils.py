@@ -59,40 +59,21 @@ def generate_slots(availability, date):
 
 
 def get_available_slots( slug,  service_id,  date_str):
-
-    # =====================================
     # VALIDATION
-    # =====================================
-
     if not service_id or not date_str:
+        return { "error": "service_id and date required","status": 400}
 
-        return {
-            "error": "service_id and date required",
-            "status": 400
-        }
 
     try:
-        date_obj = datetime.strptime(
-            date_str,
-            "%Y-%m-%d"
-        ).date()
-
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d" ).date()
     except ValueError:
-
-        return {
-            "error": "Invalid date format",
-            "status": 400
-        }
+        return {"error": "Invalid date format",  "status": 400}
 
     # =====================================
     # TENANT
     # =====================================
 
-    tenant = get_object_or_404(
-        Tenant,
-        slug=slug
-    )
-
+    tenant = get_object_or_404(Tenant,slug=slug)
     weekday = date_obj.weekday() + 1
 
     # =====================================
@@ -102,17 +83,12 @@ def get_available_slots( slug,  service_id,  date_str):
     # 2. recurring weekday
     # =====================================
 
-    availability_qs = Availability.objects.filter(
-        tenant=tenant,
-        service_id=service_id,
-        is_active=True
-    )
-
+    availability_qs = Availability.objects.filter( tenant=tenant,service_id=service_id,is_active=True)
     availability = (
 
         availability_qs.filter(
             date_specific=date_obj
-        )
+    )
 
         or
 
@@ -147,7 +123,6 @@ def get_available_slots( slug,  service_id,  date_str):
             avail,
             date_obj
         )
-
         slots.extend(generated_slots)
 
     # =====================================
@@ -180,12 +155,10 @@ def get_available_slots( slug,  service_id,  date_str):
         now + timedelta(minutes=buffer_minutes)
     ).time()
 
+
     if date_obj == now.date():
-
         available_slots = [
-
             slot for slot in available_slots
-
             if slot["start_time"] > current_with_buffer
         ]
 

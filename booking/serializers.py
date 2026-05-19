@@ -5,16 +5,15 @@ from booking.utils import *
 from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidation
-from rest_framework import serializers
 
-from .models import Booking, Availability
-from .utils import generate_slots
 
-from rest_framework import serializers
-from datetime import datetime, timedelta
+
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
-from .models import Booking, Availability, BookingStatus
+from .models import(
+        Booking, 
+        Availability,
+        BookingStatus)
 
 
 # =========================
@@ -126,8 +125,6 @@ class BookingSerializer(serializers.ModelSerializer):
     # =====================================================
 
     def validate(self, data):
-
-        request = self.context.get("request")
         tenant = self.context.get("tenant")
 
         service = data.get("service")
@@ -172,9 +169,8 @@ class BookingSerializer(serializers.ModelSerializer):
                 minutes=buffer_minutes
             )
         )
-
+#      print(f"DEBUG: Appointment datetime: {appointment_datetime}")
         if appointment_datetime <= minimum_booking_time:
-
             raise serializers.ValidationError(
                 {
                     "start_time":
@@ -185,110 +181,11 @@ class BookingSerializer(serializers.ModelSerializer):
                 }
             )
 
-        # -------------------------------------------------
-        # 3. FIND AVAILABILITY
-        # Priority:
-        # Date-specific > recurring weekday
-        # -------------------------------------------------
-
-        weekday = date_obj.weekday() + 1
-
-        availability_qs = Availability.objects.filter(
-            service=service,
-            tenant=tenant,
-            is_active=True,
-        )
-
-        availability = (
-
-            availability_qs.filter(
-                date_specific=date_obj
-            ).first()
-
-            or
-
-            availability_qs.filter(
-                day_of_week=weekday,
-                date_specific__isnull=True
-            ).first()
-
-        )
-
-        # -------------------------------------------------
-        # 4. AVAILABILITY CHECK
-        # -------------------------------------------------
-
-        if not availability:
-
-            raise serializers.ValidationError(
-                "Service is not available on this day."
-            )
-
-        # -------------------------------------------------
-        # 5. CALCULATE END TIME
-        # -------------------------------------------------
-
-        duration = availability.slot_duration
-
-        end_time = (
-
-            datetime.combine(
-                date_obj,
-                start_time
-            )
-
-            +
-
-            timedelta(minutes=duration)
-
-        ).time()
-
-        # -------------------------------------------------
-        # 6. BUSINESS HOURS VALIDATION
-        # -------------------------------------------------
-
-        if (
-            start_time < availability.start_time
-            or
-            end_time > availability.end_time
-        ):
-
-            raise serializers.ValidationError(
-                "Selected slot is outside business hours."
-            )
-
-        # -------------------------------------------------
-        # 7. PREPARE BOOKING DATA
-        # -------------------------------------------------
-
-        data.update({
-
-            # Auto-generated end time
-            "end_time": end_time,
-
-            "tenant": tenant,
-
-            # Provider / professional
-            "provider": availability.user,
-
-            # Logged-in customer/client
-            "customer": request.user,
-
-            # Auto-confirm booking
-            "status": BookingStatus.CONFIRMED,
-
-            "availability_obj": availability,})
-
         return data
+
 
     # CREATE BOOKING
     def create(self, validated_data):
-
-        # Remove temporary helper
-        validated_data.pop(
-            "availability_obj",
-            None
-        )
 
         try:
 
