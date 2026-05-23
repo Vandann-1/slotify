@@ -5,7 +5,11 @@ from booking.models import *
 # from booking.utils import generate_slots, filter_booked_slots
 
 
-
+from booking.models import (
+    Availability,
+    Booking,
+    ACTIVE_BOOKING_STATUSES,
+)   
 
 def filter_booked_slots(slots, bookings):
 

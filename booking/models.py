@@ -18,7 +18,6 @@ from .choices import (
     BookingSource,
     RefundStatus,
 )
-from .utils import generate_slots, filter_booked_slots
 
 
 User = settings.AUTH_USER_MODEL

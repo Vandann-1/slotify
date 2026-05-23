@@ -27,8 +27,20 @@ from booking.choices import *
 def create_booking_service(request, slug, data):
     tenant = get_object_or_404(Tenant,slug=slug)
     service = data.get("service")
-    date_obj = data.get("date")
-    start_time = data.get("start_time")
+    date_str = data.get("date")
+
+    date_obj = datetime.strptime(
+        date_str,
+        "%Y-%m-%d"
+    ).date()
+    
+    start_time_str = data.get("start_time")
+
+    start_time = datetime.strptime(
+    start_time_str,
+    "%H:%M:%S"
+    ).time()
+
     weekday = date_obj.weekday()
     availability = (
 

@@ -8,16 +8,27 @@ from booking.models import BookingStatus
 
 @shared_task
 def expire_pending_bookings():
-
     expired_time = timezone.now() - timedelta(minutes=15)
-
     bookings = Booking.objects.filter(
         status=BookingStatus.PENDING_PAYMENT,
         created_at__lte=expired_time
     )
 
     for booking in bookings:
-
         booking.status = BookingStatus.EXPIRED
-
         booking.save()
+
+
+@shared_task
+def complete_finished_bookings():
+
+    now = timezone.localtime()
+
+    bookings = Booking.objects.filter(
+        status=BookingStatus.CONFIRMED,
+        date__lt=now.date()
+    )
+
+    for booking in bookings:
+
+        booking.mark_completed()
