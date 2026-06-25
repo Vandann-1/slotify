@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slotify Chat - ASGI WebSocket Tester</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --panel-bg: rgba(30, 41, 59, 0.7);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --success: #10b981;
+      --danger: #ef4444;
+      --input-bg: #0b0f19;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at top right, #1e1b4b, var(--bg-color));
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+
+    header h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #818cf8, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 640px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .form-group label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input, textarea {
+      background: var(--input-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Connection Status */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+      transition: all 0.3s ease;
+    }
+
+    .dot.connected {
+      background-color: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
+    /* Buttons */
+    .btn {
+      cursor: pointer;
+      font-weight: 600;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      border: none;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      opacity: 0.9;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Chat Area */
+    .chat-layout {
+      height: 400px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: var(--input-bg);
+      overflow: hidden;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 1.25rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      scroll-behavior: smooth;
+    }
+
+    .msg-wrapper {
+      display: flex;
+      flex-direction: column;
+      max-width: 75%;
+    }
+
+    .msg-wrapper.sent {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .msg-wrapper.received {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    .msg-header {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .msg-bubble {
+      padding: 0.6rem 0.9rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .sent .msg-bubble {
+      background: var(--accent);
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+
+    .received .msg-bubble {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border-bottom-left-radius: 2px;
+      border: 1px solid var(--border-color);
+    }
+
+    .msg-system {
+      align-self: center;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .chat-input-area {
+      display: flex;
+      padding: 0.75rem;
+      background: rgba(15, 23, 42, 0.6);
+      border-top: 1px solid var(--border-color);
+      gap: 0.75rem;
+    }
+
+    /* Logs Panel */
+    .logs-panel {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 0.8rem;
+      max-height: 150px;
+      overflow-y: auto;
+      background: #05070f;
+      border-radius: 8px;
+      padding: 0.75rem;
+      border: 1px solid var(--border-color);
+      color: #38bdf8;
+    }
+
+    .log-line {
+      margin-bottom: 0.25rem;
+      line-height: 1.3;
+    }
+
+    .log-time {
+      color: var(--text-muted);
+      margin-right: 0.5rem;
+    }
+
+    .log-info { color: #38bdf8; }
+    .log-success { color: #4ade80; }
+    .log-error { color: #f87171; }
+    .log-warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Slotify Chat ASGI Tester</h1>
+    <p>Test real-time chat operations, simple JWT authentication, and multi-tenant isolation over WebSockets.</p>
+  </header>
+
+  <!-- Connection Configuration Card -->
+  <div class="card">
+    <div class="grid-2">
+      <div class="form-group">
+        <label for="wsHost">Server Host (WS URL)</label>
+        <input type="text" id="wsHost" value="ws://localhost:8000" placeholder="ws://localhost:8000">
+      </div>
+      <div class="form-group">
+        <label for="roomId">Room ID (PK)</label>
+        <input type="text" id="roomId" value="1" placeholder="Enter Room ID">
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label for="jwtToken">JWT Access Token</label>
+      <input type="text" id="jwtToken" placeholder="Paste SimpleJWT Access Token here (without 'Bearer ' prefix)">
+    </div>
+
+    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 0.5rem;">
+      <button class="btn btn-danger" id="btnDisconnect" disabled>Disconnect</button>
+      <button class="btn btn-primary" id="btnConnect">Connect WebSocket</button>
+    </div>
+  </div>
+
+  <!-- Chat Card -->
+  <div class="card">
+    <div class="status-bar">
+      <div class="status-indicator">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Disconnected</span>
+      </div>
+      <span id="activeUrl" style="font-size: 0.8rem; color: var(--text-muted); font-family: monospace;"></span>
+    </div>
+
+    <div class="chat-layout">
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg-system">No active WebSocket connection. Connect above to start chatting.</div>
+      </div>
+      
+      <form class="chat-input-area" id="chatForm">
+        <input type="text" id="msgInput" placeholder="Type a message to send..." disabled autocomplete="off">
+        <button type="submit" class="btn btn-primary" id="btnSend" disabled>Send</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Debug Console -->
+  <div class="card" style="padding: 1rem;">
+    <div style="font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; letter-spacing: 0.05em;">
+      Debug Event Console
+    </div>
+    <div class="logs-panel" id="logsPanel">
+      <div class="log-line"><span class="log-time">[System]</span><span class="log-info">Console initialized. Ready to test.</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // DOM Elements
+  const wsHostInput = document.getElementById('wsHost');
+  const roomIdInput = document.getElementById('roomId');
+  const jwtTokenInput = document.getElementById('jwtToken');
+  
+  const btnConnect = document.getElementById('btnConnect');
+  const btnDisconnect = document.getElementById('btnDisconnect');
+  
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const activeUrlSpan = document.getElementById('activeUrl');
+  
+  const chatMessages = document.getElementById('chatMessages');
+  const msgInput = document.getElementById('msgInput');
+  const btnSend = document.getElementById('btnSend');
+  const chatForm = document.getElementById('chatForm');
+  
+  const logsPanel = document.getElementById('logsPanel');
+
+  let socket = null;
+
+  // Logging function
+  function logEvent(type, message) {
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+    
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'log-time';
+    timeSpan.textContent = `[${timeStr}]`;
+    
+    const contentSpan = document.createElement('span');
+    contentSpan.className = `log-${type}`;
+    contentSpan.textContent = message;
+    
+    line.appendChild(timeSpan);
+    line.appendChild(contentSpan);
+    
+    logsPanel.appendChild(line);
+    logsPanel.scrollTop = logsPanel.scrollHeight;
+  }
+
+  // Connect WebSocket
+  function connect() {
+    const host = wsHostInput.value.trim();
+    const roomId = roomIdInput.value.trim();
+    const token = jwtTokenInput.value.trim();
+
+    if (!host || !roomId) {
+      alert('Host URL and Room ID are required!');
+      return;
+    }
+
+    if (!token) {
+      logEvent('warn', 'Connecting without a JWT token. The server will reject connection if auth required.');
+    }
+
+    // Build WebSocket url
+    let wsUrl = `${host}/ws/chat/${roomId}/`;
+    if (token) {
+      wsUrl += `?token=${encodeURIComponent(token)}`;
+    }
+
+    logEvent('info', `Connecting to: ${wsUrl}`);
+    activeUrlSpan.textContent = wsUrl;
+
+    try {
+      socket = new WebSocket(wsUrl);
+    } catch (e) {
+      logEvent('error', `Connection error: ${e.message}`);
+      return;
+    }
+
+    // Update buttons state
+    btnConnect.disabled = true;
+    wsHostInput.disabled = true;
+    roomIdInput.disabled = true;
+    jwtTokenInput.disabled = true;
+
+    socket.onopen = function(event) {
+      logEvent('success', 'WebSocket Connection Established!');
+      statusDot.className = 'dot connected';
+      statusText.textContent = 'Connected';
+      
+      btnDisconnect.disabled = false;
+      msgInput.disabled = false;
+      btnSend.disabled = false;
+      msgInput.focus();
+
+      // Clear chat messages and put join banner
+      chatMessages.innerHTML = '<div class="msg-system">Connected to Room ' + roomId + '</div>';
+    };
+
+    socket.onmessage = function(event) {
+      logEvent('info', `Received: ${event.data}`);
+      try {
+        const data = JSON.parse(event.data);
+        displayMessage(data);
+      } catch (e) {
+        logEvent('error', `Failed to parse message JSON: ${e.message}`);
+      }
+    };
+
+    socket.onerror = function(error) {
+      logEvent('error', `WebSocket Error occurred`);
+      console.error(error);
+    };
+
+    socket.onclose = function(event) {
+      logEvent('warn', `WebSocket Connection Closed. Code: ${event.code}, Reason: ${event.reason || 'None'}`);
+      
+      // Handle close codes for user feedback
+      let closeExplanation = '';
+      if (event.code === 4003) {
+        closeExplanation = ' (Forbidden - Authentication or membership validation failed)';
+      } else if (event.code === 4004) {
+        closeExplanation = ' (Not Found - Chat room does not exist)';
+      }
+      
+      statusDot.className = 'dot';
+      statusText.textContent = 'Disconnected' + closeExplanation;
+      activeUrlSpan.textContent = '';
+      
+      btnConnect.disabled = false;
+      btnDisconnect.disabled = true;
+      wsHostInput.disabled = false;
+      roomIdInput.disabled = false;
+      jwtTokenInput.disabled = false;
+      
+      msgInput.disabled = true;
+      btnSend.disabled = true;
+      
+      const systemMsg = document.createElement('div');
+      systemMsg.className = 'msg-system';
+      systemMsg.textContent = `Disconnected from Room ${roomId}. Code ${event.code}${closeExplanation}`;
+      chatMessages.appendChild(systemMsg);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      
+      socket = null;
+    };
+  }
+
+  // Disconnect WebSocket
+  function disconnect() {
+    if (socket) {
+      logEvent('info', 'Closing WebSocket connection manually...');
+      socket.close();
+    }
+  }
+
+  // Display message in Chat box
+  function displayMessage(data) {
+    // Expected fields: message, sender_id, sender_username, created_at, id
+    const isSentByMe = false; // Simple test UI - we treat received ws messages normally
+    
+    const wrapper = document.createElement('div');
+    // Simple logic: if sender username is the one we logged or ws says so, style it
+    wrapper.className = `msg-wrapper received`; 
+    
+    const header = document.createElement('div');
+    header.className = 'msg-header';
+    
+    const time = data.created_at ? new Date(data.created_at).toLocaleTimeString() : new Date().toLocaleTimeString();
+    header.innerHTML = `<strong>${escapeHtml(data.sender_username || 'System')}</strong> <span>${time}</span>`;
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = data.message;
+    
+    wrapper.appendChild(header);
+    wrapper.appendChild(bubble);
+    
+    chatMessages.appendChild(wrapper);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  // Send message
+  function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
+
+    const payload = {
+      message: text
+    };
+
+    const payloadStr = JSON.stringify(payload);
+    socket.send(payloadStr);
+    logEvent('success', `Sent: ${payloadStr}`);
+    
+    // Optimistic self display (styled as sent by us)
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper sent';
+    
+    const header = document.createElement('div');
+    header.className = 'msg-header';
+    const time = new Date().toLocaleTimeString();
+    header.innerHTML = `<strong>You</strong> <span>${time}</span>`;
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+    bubble.textContent = text;
+    
+    wrapper.appendChild(header);
+    wrapper.appendChild(bubble);
+    chatMessages.appendChild(wrapper);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    msgInput.value = '';
+    msgInput.focus();
+  }
+
+  // Utility HTML Escape
+  function escapeHtml(string) {
+    const map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return String(string).replace(/[&<>"']/g, function(m) { return map[m]; });
+  }
+
+  // Event Listeners
+  btnConnect.addEventListener('click', connect);
+  btnDisconnect.addEventListener('click', disconnect);
+  
+  chatForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    sendMessage();
+  });
+</script>
+</body>
+</html>

@@ -1,6 +1,13 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: slotify-redis-standalone
+    ports:
+      - "6379:6379"
+    restart: always
+
   backend:
     build: .
     container_name: slotify-backend-standalone
@@ -14,4 +21,9 @@ services:
       - ALLOWED_HOSTS=*,127.0.0.1,localhost
       - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
       - DB_NAME=db.sqlite3
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
     restart: always
