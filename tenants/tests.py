@@ -8,7 +8,7 @@ from tenants.models import Tenant, TenantMember, TenantAwareTestModel
 from tenants.choices import TenantMemberRole, TemplateType
 from tenants.context import set_current_tenant, get_current_tenant, clear_current_tenant
 from tenants.middleware import TenantMiddleware
-from tenants.permissions import IsTenantMember, IsTenantAdmin
+from Backend.permissions import IsTenantMember, IsTenantAdmin
 
 User = get_user_model()
 

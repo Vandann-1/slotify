@@ -8,6 +8,7 @@ from booking.models import *
 from booking.serializers import *
 from booking.utils import generate_slots, filter_booked_slots
 from rest_framework.permissions import IsAuthenticated
+from Backend.permissions import IsTenantOwner, IsTenantAdmin, IsTenantMember
 from django.db import transaction
 from booking.services import create_booking_service
 from rest_framework import serializers
@@ -47,7 +48,7 @@ class ServiceListView(APIView):
 # =========================
 
 class ServiceCreateView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenantAdmin]
     def post(self, request, slug):
 
         tenant = get_object_or_404(Tenant, slug=slug)
@@ -62,13 +63,10 @@ class ServiceCreateView(APIView):
 
 
 class AvailabilityCreateView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenantOwner]
 
     def post(self, request, slug):
         tenant = get_object_or_404(Tenant, slug=slug)
-        #  Only owner can create
-        if tenant.owner != request.user:
-            return Response({"error": "Not allowed"}, status=403)
         data = request.data.copy()
         #  Force tenant
         data["tenant"] = tenant.id
@@ -222,7 +220,7 @@ class CancelBookingView(APIView):
 
 
 class BookingListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenantMember]
 
     def get(self, request, slug):
         tenant = get_object_or_404(Tenant, slug=slug)

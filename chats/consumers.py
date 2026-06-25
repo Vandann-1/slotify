@@ -4,7 +4,7 @@ from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from tenants.context import set_current_tenant, clear_current_tenant
 from tenants.models import TenantMember
-from .models import ChatRoom, Message
+from .models import Conversation, Message
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
@@ -81,13 +81,14 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def get_room(self, room_id):
         try:
-            return ChatRoom.unfiltered_objects.select_related("tenant").get(id=room_id)
-        except (ChatRoom.DoesNotExist, ValueError):
+            return Conversation.unfiltered_objects.select_related("tenant").get(id=room_id)
+        except (Conversation.DoesNotExist, ValueError):
             return None
 
     @database_sync_to_async
     def verify_tenant_membership(self, tenant, user):
         return TenantMember.objects.filter(tenant=tenant, user=user, is_active=True).exists()
+
 
     @database_sync_to_async
     def save_message(self, room, sender, content):
@@ -95,7 +96,8 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         token = set_current_tenant(room.tenant)
         try:
             msg = Message.objects.create(
-                room=room,
+                conversation=room,
+                tenant=room.tenant,
                 sender=sender,
                 content=content
             )

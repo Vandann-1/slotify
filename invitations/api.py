@@ -13,6 +13,7 @@ Flow:
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
+from Backend.permissions import IsTenantAdmin
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
@@ -152,7 +153,7 @@ from django.views.decorators.csrf import csrf_exempt
 @method_decorator(csrf_exempt, name='dispatch')
 class InviteProfessionalAPIView(APIView):
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenantAdmin]
 
     @transaction.atomic
     def post(self, request, slug):
