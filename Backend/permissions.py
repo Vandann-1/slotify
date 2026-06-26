@@ -3,6 +3,8 @@ from tenants.models.tenant import TenantMember
 from tenants.choices import TenantMemberRole
 from django.conf import settings
 
+from django.contrib.auth.models import AnonymousUser
+
 
 class IsTenantOwner(permissions.BasePermission):
     """

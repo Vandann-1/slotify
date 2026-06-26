@@ -6,18 +6,39 @@ from .models import Conversation, Message
 from .serializers import ConversationListSerializer, MessageSerializer
 
 
-class ConversationViewSet(viewsets.ModelViewSet):
+
+class ConversationListAPIView(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows conversations to be viewed.
+    """
     serializer_class = ConversationListSerializer
-    permission_classes = [IsTenantMember]
 
     def get_queryset(self):
-        # Automatically filtered by current tenant via TenantAwareModel & TenantManager!
-        return Conversation.objects.all().order_by("-updated_at")
+        user = self.request.user
+        return Conversation.objects.filter(members=user).order_by('-last_message_at')
 
-    @action(detail=True, methods=["get"])
-    def messages(self, request, pk=None):
-        conversation = self.get_object()
-        # Message is also a TenantAwareModel, so queries on it are tenant-isolated automatically
-        messages = conversation.messages.all().order_by("created_at")
-        serializer = MessageSerializer(messages, many=True)
-        return Response(serializer.data)
+    
+class ConversationDetailAPIView(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows a conversation to be viewed.
+    """
+    serializer_class = MessageSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        conversation_id = self.kwargs.get('pk')
+        return Message.objects.filter(conversation_id=conversation_id, conversation__members=user).order_by('created_at')
+    
+
+class MessageListAPIView(viewsets.ReadOnlyModelViewSet):
+    """
+    API endpoint that allows messages to be viewed.
+    """
+    serializer_class = MessageSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        conversation_id = self.kwargs.get('conversation_pk')
+        return Message.objects.filter(conversation_id=conversation_id, conversation__members=user).order_by('created_at')
+
+    
