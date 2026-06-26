@@ -1,4 +1,5 @@
 from rest_framework import permissions
+from slotify.chats.models import Conversation
 from tenants.models.tenant import TenantMember
 from tenants.choices import TenantMemberRole
 from django.conf import settings
@@ -114,3 +115,23 @@ class IsTenantMember(permissions.BasePermission):
             return True
         except TenantMember.DoesNotExist:
             return False
+
+
+class IsConversationParticipant(permissions.BasePermission):
+    """
+    Permission class that grants access to participants of a specific conversation.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        conversation_id = view.kwargs.get('conversation_pk') or view.kwargs.get('pk')
+        if not conversation_id:
+            return False
+
+        try:
+            conversation = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return False
+
+        return request.user in [conversation.user, conversation.member]
