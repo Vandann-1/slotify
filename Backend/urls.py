@@ -22,7 +22,7 @@ urlpatterns = [
     path("api/auth/", include("accounts.urls")),
     path("api/invitations/", include("invitations.urls")),
     path("api/", include("booking.urls")),
-    path("api/", include("chats.urls")),
+    path("api/chats/", include("chats.urls")),
 
     path("api-auth/", include("rest_framework.urls")),
 

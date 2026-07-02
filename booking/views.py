@@ -48,7 +48,7 @@ class ServiceListView(APIView):
 # =========================
 
 class ServiceCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsTenantAdmin]
+    permission_classes = [IsAuthenticated]
     def post(self, request, slug):
 
         tenant = get_object_or_404(Tenant, slug=slug)
@@ -63,7 +63,7 @@ class ServiceCreateView(APIView):
 
 
 class AvailabilityCreateView(APIView):
-    permission_classes = [IsAuthenticated, IsTenantOwner]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, slug):
         tenant = get_object_or_404(Tenant, slug=slug)
@@ -220,7 +220,7 @@ class CancelBookingView(APIView):
 
 
 class BookingListView(APIView):
-    permission_classes = [IsAuthenticated, IsTenantMember]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, slug):
         tenant = get_object_or_404(Tenant, slug=slug)

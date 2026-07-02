@@ -1,5 +1,6 @@
 from rest_framework import permissions
-from slotify.chats.models import Conversation
+from chats.models import Conversation
+
 from tenants.models.tenant import TenantMember
 from tenants.choices import TenantMemberRole
 from django.conf import settings

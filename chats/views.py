@@ -13,12 +13,12 @@ class ConversationViewSet(ReadOnlyModelViewSet):
     """
     API endpoint that allows conversations to be viewed.
     """
-    permission_classes = [permissions.IsAuthenticated, IsTenantMember]
+    permission_classes = [permissions.IsAuthenticated,] 
     serializer_class = ConversationListSerializer
 
     def get_queryset(self):
         user = self.request.user
-        return Conversation.objects.filter(members=user).order_by('-last_message_at')
+        return Conversation.objects.filter(member=user).order_by('-last_message_at')
 
     
 
@@ -34,6 +34,6 @@ class MessageListAPIView(ListAPIView):
     def get_queryset(self):
         user = self.request.user
         conversation_id = self.kwargs.get('conversation_pk')
-        return Message.objects.filter(conversation_id=conversation_id, conversation__members=user).order_by('created_at')
+        return Message.objects.filter(conversation_id=conversation_id, conversation__member=user).order_by('created_at')
 
     
